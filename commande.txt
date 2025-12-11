@@ -1,0 +1,7 @@
+pour prisma 
+npm install prisma --save --dev
+ensuite
+npm install @prisma client
+ensuite npx prisma init
+npx prisma generate
+npx prisma migrate dev --name init

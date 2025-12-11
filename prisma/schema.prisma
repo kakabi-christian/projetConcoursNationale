@@ -1,0 +1,509 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+//
+// ENUMS
+//
+enum Region {
+  ADAMAOUA
+  CENTRE
+  EST
+  EXTREME_NORD
+  LITTORAL
+  NORD
+  NORD_OUEST
+  OUEST
+  SUD
+  SUD_OUEST
+}
+
+enum NotificationType {
+  INFO
+  ALERT
+  SYSTEM
+}
+
+enum StatutEcole {
+  OUVERT
+  FERME
+}
+
+enum StatutArrete {
+  EN_COURS
+  TERMINE
+  ARCHIVE
+}
+
+model User {
+  id              String          @id @default(uuid())
+  email           String          @unique
+  password        String
+  nom             String?
+  prenom          String?
+  telephone       String?
+  isVerified      Boolean         @default(false)
+  region          Region?
+  
+  // Relations
+  roles           UserRole[]
+  feedbacks       Feedback[]
+  notifications   Notifications[]
+  recus           Recu[]
+  admin           Admin?          // Relation inverse avec Admin
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Role {
+  id              String          @id @default(uuid())
+  name            String
+  description     String?
+  
+  // Relations
+  users           UserRole[]
+  permissions     RolePermission[]
+  permissionRules PermissionRole[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Permission {
+  id              String          @id @default(uuid())
+  name            String          @unique
+  description     String?
+
+  // Relations
+  roles           RolePermission[]
+  permissionRules PermissionRole[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model UserRole {
+  id              String          @id @default(uuid())
+  userId          String
+  roleId          String
+
+  user            User            @relation(fields: [userId], references: [id])
+  role            Role            @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, roleId])
+  createdAt       DateTime        @default(now())
+}
+
+model RolePermission {
+  id              String          @id @default(uuid())
+  roleId          String
+  permissionId    String
+
+  role            Role            @relation(fields: [roleId], references: [id])
+  permission      Permission      @relation(fields: [permissionId], references: [id])
+
+  @@unique([roleId, permissionId])
+  createdAt       DateTime        @default(now())
+}
+
+model PermissionRole {
+  id              String          @id @default(uuid())
+  roleId          String
+  permissionId    String
+  
+  role            Role            @relation(fields: [roleId], references: [id])
+  permission      Permission      @relation(fields: [permissionId], references: [id])
+  
+  permissionRuleId String?
+  
+  @@unique([roleId, permissionId])
+  createdAt       DateTime        @default(now())
+}
+
+model Admin {
+  id              String          @id @default(uuid())
+  userId          String          @unique
+  departementId   String?
+
+  user            User            @relation(fields: [userId], references: [id])
+  departement     Departement?    @relation(fields: [departementId], references: [id])
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Candidate {
+  id              String              @id @default(uuid())
+  matricule       String?             @unique
+  cni             String?             @unique
+  dateNaissance   DateTime?
+  lieuNaissance   String?
+  sexe            String?
+  nationalite     String?
+  ville           String?
+  telephoneTuteur String?
+  nomTuteur       String?
+  region          Region?
+  
+  // Relations
+  enrollements    Enrollement[]
+  paiements       Paiement[]
+  documents       Documents?
+  recus           Recu[]
+  specialites     CandidatSpecialite[]
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+}
+
+model CandidatSpecialite {
+  id              String              @id @default(uuid())
+  candidatId      String
+  specialiteId    String
+
+  candidat        Candidate           @relation(fields: [candidatId], references: [id])
+  specialite      Specialite          @relation(fields: [specialiteId], references: [id])
+
+  @@unique([candidatId, specialiteId])
+  createdAt       DateTime            @default(now())
+}
+
+model Documents {
+  id              String          @id @default(uuid())
+  scanActeNaissance String?
+  scanCni         String?
+  scanReleveBac   String?
+  
+  candidateId     String          @unique
+  candidate       Candidate       @relation(fields: [candidateId], references: [id])
+  
+  enrollementId   String?         @unique
+  enrollement     Enrollement?    @relation("EnrollementDocuments")
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+model Paiement {
+  id              String   @id @default(uuid())
+  montantTotal    Float
+  datePaiement    DateTime @default(now())
+  
+  candidatId      String
+  candidat        Candidate @relation(fields: [candidatId], references: [id])
+  
+  enrollementId   String    @unique
+  enrollement     Enrollement @relation(fields: [enrollementId], references: [id])
+  
+  centreDepotId   String? 
+  centreDepot     Depot?     @relation(fields: [centreDepotId], references: [id])
+  
+  recu            Recu?      // relation inverse
+}
+
+
+model Concours {
+  id              String          @id @default(uuid())
+  code            String          @unique
+  intitule        String
+  dateOuvertureInscription DateTime?
+  dateClotureInscription  DateTime?
+
+  // Relations
+  fraisId         String?
+  fraisConcours   FraisConcours?  @relation(fields: [fraisId], references: [id])
+  
+  anneeId         String?
+  annee           Annee?          @relation(fields: [anneeId], references: [id])
+  
+  specialiteId    String?
+  specialite      Specialite?     @relation(fields: [specialiteId], references: [id])
+
+  sessions        Session[]
+  enrollements    Enrollement[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+
+model Session {
+  id              String          @id @default(uuid())
+  nom             String
+  dateDebut       DateTime
+  dateFin         DateTime
+  
+  concoursId      String
+  concours        Concours        @relation(fields: [concoursId], references: [id])
+  enrollements    Enrollement[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Enrollement {
+  id                      String              @id @default(uuid())
+  candidatId              String
+  candidat                Candidate           @relation(fields: [candidatId], references: [id])
+  
+  concoursId              String
+  concours                Concours            @relation(fields: [concoursId], references: [id])
+  
+  sessionId               String?
+  session                 Session?            @relation(fields: [sessionId], references: [id])
+  
+  documentId              String?             @unique
+  document                Documents?          @relation("EnrollementDocuments", fields: [documentId], references: [id])
+  
+  documentGeneratedId     String?             @unique
+  generatedDocument       GeneratedDocuments? @relation(fields: [documentGeneratedId], references: [id])
+  
+  paiement                Paiement?
+
+  centreExamenId          String? 
+  centreExamen            CentreExamen?       @relation(fields: [centreExamenId], references: [id])
+
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+}
+
+model GeneratedDocuments {
+  id                      String          @id @default(uuid())
+  qrCode                  String?
+  
+  enrollement             Enrollement?
+
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+}
+
+model FraisConcours {
+  id              String          @id @default(uuid())
+  montant         Float
+  
+  concours        Concours[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Annee {
+  id              String          @id @default(uuid())
+  libelle         String?         @unique
+  dateDebut       DateTime?
+  dateFin         DateTime?
+  estActive       Boolean         @default(true)
+
+  concours        Concours[]
+  archives        Archive[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Departement {
+  id              String          @id @default(uuid())
+  nomDepa         String          @unique
+
+  filieres        Filiere[]
+  admins          Admin[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Filiere {
+  id              String          @id @default(uuid())
+  intitule        String
+  description     String?
+  
+  departementId   String?
+  departement     Departement?    @relation(fields: [departementId], references: [id])
+  epreuves        Epreuve[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Epreuve {
+  id              String          @id @default(uuid())
+  nomEpreuve      String
+  nonEliminatoire Boolean?
+  
+  filiereId       String
+  filiere         Filiere         @relation(fields: [filiereId], references: [id])
+  
+  niveauId        String?
+  niveau          Niveau?         @relation(fields: [niveauId], references: [id])
+  
+  salleId         String?
+  salle           Salle?          @relation(fields: [salleId], references: [id])
+  
+  archives        Archive[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Niveau {
+  id              String          @id @default(uuid())
+  intitule        String
+  code            String?         @unique
+  ordre           Int?
+
+  epreuves        Epreuve[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Salle {
+  id              String          @id @default(uuid())
+  codeClasse      String          @unique
+  
+  epreuves        Epreuve[]
+  consignes       Consigne[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Consigne {
+  id              String          @id @default(uuid())
+  titre           String
+  description     String
+  
+  salleId         String
+  salle           Salle           @relation(fields: [salleId], references: [id])
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Specialite {
+  id              String          @id @default(uuid())
+  libelle         String
+  code            String          @unique
+  isActive        Boolean         @default(true)
+  
+  concours        Concours[]
+  candidats       CandidatSpecialite[]
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Ecole {
+  id              String          @id @default(uuid())
+  nomEcole        String
+  statut          StatutEcole     @default(OUVERT)
+  
+  centresExamen   CentreExamen[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model CentreExamen {
+  id              String          @id @default(uuid())
+  intitule        String
+  lieuCentre      String?
+
+  ecoleId         String?
+  ecole           Ecole?          @relation(fields: [ecoleId], references: [id])
+  
+  depots          Depot[]
+  enrollements    Enrollement[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Depot {
+  id              String          @id @default(uuid())
+  intitule        String
+  lieuDepot       String          @unique
+  
+  centreExamenId  String
+  centreExamen    CentreExamen    @relation(fields: [centreExamenId], references: [id])
+  
+  paiements       Paiement[]
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+
+
+model PieceDossier {
+  id              String          @id @default(uuid())
+  nom             String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Recu {
+  id            String   @id @default(uuid())
+  numeroRecu    String   @unique
+  montant       Float
+  telephone     String?
+  concours      String?
+  estUtilise    Boolean  @default(false)
+  
+  // Relations
+  candidatId    String?
+  candidat      Candidate? @relation(fields: [candidatId], references: [id])
+
+  userId        String?
+  user          User?       @relation(fields: [userId], references: [id])
+
+  paiementId    String?     @unique
+  paiement      Paiement?   @relation(fields: [paiementId], references: [id])
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+
+
+model Archive {
+  id              String          @id @default(uuid())
+  epreuveId       String
+  anneeId         String
+
+  epreuve         Epreuve         @relation(fields: [epreuveId], references: [id])
+  annee           Annee           @relation(fields: [anneeId], references: [id])
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Feedback {
+  id              String          @id @default(uuid())
+  userId          String
+  comment         String
+
+  user            User            @relation(fields: [userId], references: [id])
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Notifications {
+  id              String          @id @default(uuid())
+  userId          String
+  message         String
+  type            NotificationType
+  isRead          Boolean         @default(false)
+  isBroadcast     Boolean         @default(false)
+  sentAt          DateTime?
+
+  user            User            @relation(fields: [userId], references: [id])
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
