@@ -1,79 +1,67 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { PrismaService } from 'src/prisma/prisma.service';
 
+/**
+ * Stratégie JWT pour valider et décoder les tokens
+ */
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
-    private prisma: PrismaService,
     private configService: ConfigService,
+    private prisma: PrismaService,
   ) {
-    // Lire le chemin de la clé publique défini dans .env
-    const publicKeyPath = configService.get<string>('JWT_PUBLIC_KEY_PATH');
-    if (!publicKeyPath) {
-      throw new Error(
-        'JWT_PUBLIC_KEY_PATH is missing in environment variables.',
-      );
-    }
-
-    // Charger la clé publique depuis le fichier
-    const publicKey = readFileSync(join(process.cwd(), publicKeyPath), 'utf8');
-
     super({
+      // Extrait le token du header Authorization: Bearer <token>
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      
+      // Ne pas ignorer l'expiration du token
       ignoreExpiration: false,
-      algorithms: ['RS256'],
-      secretOrKey: publicKey,
+      
+      // Clé secrète pour vérifier la signature du token
+      secretOrKey: configService.get<string>('JWT_SECRET') || 'your-secret-key',
     });
   }
 
+  /**
+   * Méthode appelée après validation du token
+   * Le payload contient les données encodées dans le JWT
+   */
   async validate(payload: any) {
-    // Vérifier que la langue est bien présente dans le token
-    if (!payload.languageId) {
-      throw new UnauthorizedException(
-        'User language not found in the token payload',
-      );
-    }
-
-    // Récupérer l'utilisateur
+    // payload contient: { sub: userId, email: user.email, iat: ..., exp: ... }
+    
+    // Recherche l'utilisateur dans la BD avec ses relations
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException('User not found');
-    }
-
-    // Récupérer la langue associée
-    const language = await this.prisma.language.findUnique({
-      where: { id: payload.languageId },
-    });
-
-    if (!language) {
-      throw new UnauthorizedException(
-        'Language linked to this user was not found in database',
-      );
-    }
-
-    // 🔥 Ce qui est retourné ici sera accessible via req.user
-    return {
-      id: user.id,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      role: user.role,
-      languageId: language.id, // 🔹 ajouté
-
-
-      language: {
-        id: language.id,
-        name: language.name,
-        code: language.languageCode,
+      include: {
+        roles: {
+          include: {
+            role: {
+              include: {
+                permissions: {
+                  include: {
+                    permission: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
-    };
+    });
+
+    // Si l'utilisateur n'existe pas ou n'est pas vérifié
+    if (!user) {
+      throw new UnauthorizedException('Utilisateur introuvable');
+    }
+
+    if (!user.isVerified) {
+      throw new UnauthorizedException('Compte non vérifié');
+    }
+
+    // Retourne l'utilisateur qui sera attaché à request.user
+    return user;
   }
 }

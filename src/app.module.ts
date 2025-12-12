@@ -18,7 +18,15 @@ import { MulterModule } from '@nestjs/platform-express';
 
 // 🔹 Tes guards globaux
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
-
+import { RoleModule } from './role/role.module';
+import { DepartementModule } from './departement/departement.module';
+import { NotificationModule } from './notification/notification.module';
+import { RolePermissionModule } from './role-permission/role-permission.module';
+import { AnneeAcademiqueModule } from './annee-academique/annee-academique.module';
+import { SessionModule } from './session/session.module';
+import { PermissionModule } from './permission/permission.module';
+import { ConcoursModule } from './concours/concours.module';
+import { PaiementModule } from './paiement/paiement.module';
 @Module({
   imports: [
     // 🔸 Configuration globale de l’environnement
@@ -41,6 +49,24 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
       rootPath: join(__dirname, '..', 'uploads'),
       serveRoot: '/uploads', // accessible via http://localhost:3000/uploads/xxx.mp3
     }),
+
+    RoleModule,
+
+    DepartementModule,
+
+    NotificationModule,
+
+    AnneeAcademiqueModule,
+
+    RolePermissionModule,
+
+    SessionModule,
+
+    PermissionModule,
+
+    ConcoursModule,
+
+    PaiementModule,
 
     
   ],

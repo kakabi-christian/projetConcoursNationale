@@ -6,6 +6,7 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
 //
 // ENUMS
 //
@@ -39,6 +40,25 @@ enum StatutArrete {
   ARCHIVE
 }
 
+enum UserType {
+  ADMIN
+  CANDIDATE
+}
+enum TypeBac {
+  GENERAL
+  TECHNIQUE
+  PROFESSIONNEL
+}
+
+enum TypeMention {
+  PASSABLE
+  BIEN
+  TRES_BIEN
+  EXCELLENT
+  ASSEZ_BIEN
+}
+
+
 model User {
   id              String          @id @default(uuid())
   email           String          @unique
@@ -48,6 +68,7 @@ model User {
   telephone       String?
   isVerified      Boolean         @default(false)
   region          Region?
+  userType        UserType        @default(CANDIDATE)
   
   // Relations
   roles           UserRole[]
@@ -68,8 +89,6 @@ model Role {
   // Relations
   users           UserRole[]
   permissions     RolePermission[]
-  permissionRules PermissionRole[]
-
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 }
@@ -81,8 +100,6 @@ model Permission {
 
   // Relations
   roles           RolePermission[]
-  permissionRules PermissionRole[]
-
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 }
@@ -111,19 +128,7 @@ model RolePermission {
   createdAt       DateTime        @default(now())
 }
 
-model PermissionRole {
-  id              String          @id @default(uuid())
-  roleId          String
-  permissionId    String
-  
-  role            Role            @relation(fields: [roleId], references: [id])
-  permission      Permission      @relation(fields: [permissionId], references: [id])
-  
-  permissionRuleId String?
-  
-  @@unique([roleId, permissionId])
-  createdAt       DateTime        @default(now())
-}
+
 
 model Admin {
   id              String          @id @default(uuid())
@@ -150,10 +155,12 @@ model Candidate {
   nomTuteur       String?
   region          Region?
   
+  
   // Relations
   enrollements    Enrollement[]
   paiements       Paiement[]
   documents       Documents?
+
   recus           Recu[]
   specialites     CandidatSpecialite[]
 
@@ -175,9 +182,10 @@ model CandidatSpecialite {
 
 model Documents {
   id              String          @id @default(uuid())
-  scanActeNaissance String?
-  scanCni         String?
-  scanReleveBac   String?
+  numeroCni         String?
+  typeExamen   TypeBac
+  serie           String? 
+  Mention     TypeMention
   
   candidateId     String          @unique
   candidate       Candidate       @relation(fields: [candidateId], references: [id])
@@ -188,61 +196,71 @@ model Documents {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 }
+
 model Paiement {
   id              String   @id @default(uuid())
-  montantTotal    Float
+  montantTotal    Float?
   datePaiement    DateTime @default(now())
   
-  candidatId      String
-  candidat        Candidate @relation(fields: [candidatId], references: [id])
+  // Informations du formulaire de paiement (avant inscription)
+  nomComplet      String?  // Nom saisi lors du paiement
+  email           String?  // Email saisi lors du paiement
+  telephone       String?  // Téléphone saisi lors du paiement
   
-  enrollementId   String    @unique
-  enrollement     Enrollement @relation(fields: [enrollementId], references: [id])
+  // Informations de la transaction
+  modePaiement    String?  // "ORANGE_MONEY" ou "MTN_MOMO"
+  numeroTransaction String? // Ex: "MTN-2025-12345"
+  statut          String   @default("PENDING") // PENDING, SUCCESS, FAILED
+  
+  // Relation vers le concours sélectionné lors du paiement
+  concoursId      String?
+  concours        Concours? @relation(fields: [concoursId], references: [id])
+  
+  // Relations optionnelles (liées plus tard lors de l'inscription)
+  candidatId      String?
+  candidat        Candidate? @relation(fields: [candidatId], references: [id])
+  
+  enrollementId   String?    @unique
+  enrollement     Enrollement? @relation(fields: [enrollementId], references: [id])
   
   centreDepotId   String? 
   centreDepot     Depot?     @relation(fields: [centreDepotId], references: [id])
   
-  recu            Recu?      // relation inverse
+  recu            Recu?      // relation inverse (1:1)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
+model Session {
+  id        String    @id @default(uuid())
+  nom       String
+  dateDebut DateTime
+  dateFin   DateTime
 
+  concours  Concours? @relation(fields: [concoursId], references: [id])
+  concoursId String?  // facultatif, car la Session peut exister sans Concours
+
+  enrollements Enrollement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
 
 model Concours {
-  id              String          @id @default(uuid())
-  code            String          @unique
-  intitule        String
-  dateOuvertureInscription DateTime?
-  dateClotureInscription  DateTime?
+  id        String    @id @default(uuid())
+  code      String    @unique
+  intitule  String
+  montant   Float?
 
-  // Relations
-  fraisId         String?
-  fraisConcours   FraisConcours?  @relation(fields: [fraisId], references: [id])
-  
-  anneeId         String?
-  annee           Annee?          @relation(fields: [anneeId], references: [id])
-  
-  specialiteId    String?
-  specialite      Specialite?     @relation(fields: [specialiteId], references: [id])
+  anneeId   String?
+  annee     Annee?    @relation(fields: [anneeId], references: [id])
 
-  sessions        Session[]
-  enrollements    Enrollement[]
+  sessions      Session[]
+  enrollements  Enrollement[]
+  paiements     Paiement[]     // ← Relation inverse ajoutée
 
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-}
-
-
-model Session {
-  id              String          @id @default(uuid())
-  nom             String
-  dateDebut       DateTime
-  dateFin         DateTime
-  
-  concoursId      String
-  concours        Concours        @relation(fields: [concoursId], references: [id])
-  enrollements    Enrollement[]
-
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Enrollement {
@@ -281,15 +299,6 @@ model GeneratedDocuments {
   updatedAt               DateTime        @updatedAt
 }
 
-model FraisConcours {
-  id              String          @id @default(uuid())
-  montant         Float
-  
-  concours        Concours[]
-
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-}
 
 model Annee {
   id              String          @id @default(uuid())
@@ -307,7 +316,7 @@ model Annee {
 
 model Departement {
   id              String          @id @default(uuid())
-  nomDepa         String          @unique
+  nomDep         String          @unique
 
   filieres        Filiere[]
   admins          Admin[]
@@ -366,19 +375,6 @@ model Salle {
   codeClasse      String          @unique
   
   epreuves        Epreuve[]
-  consignes       Consigne[]
-
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-}
-
-model Consigne {
-  id              String          @id @default(uuid())
-  titre           String
-  description     String
-  
-  salleId         String
-  salle           Salle           @relation(fields: [salleId], references: [id])
 
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
@@ -390,7 +386,6 @@ model Specialite {
   code            String          @unique
   isActive        Boolean         @default(true)
   
-  concours        Concours[]
   candidats       CandidatSpecialite[]
   
   createdAt       DateTime        @default(now())
@@ -449,7 +444,7 @@ model PieceDossier {
 model Recu {
   id            String   @id @default(uuid())
   numeroRecu    String   @unique
-  montant       Float
+  montant       Float?
   telephone     String?
   concours      String?
   estUtilise    Boolean  @default(false)
@@ -463,6 +458,8 @@ model Recu {
 
   paiementId    String?     @unique
   paiement      Paiement?   @relation(fields: [paiementId], references: [id])
+
+  qrCode        String?     // <-- Champ ajouté pour stocker le QR Code en base64
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

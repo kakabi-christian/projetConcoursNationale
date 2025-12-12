@@ -9,11 +9,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { EmailService } from '../email/email.service';
-import { CryptoService } from '../crypto/crypto.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { Role } from '@prisma/client';
+import { RegisterAdminDto } from './dto/register-admin.dto';
 
 @Injectable()
 export class AuthService {
@@ -23,7 +23,6 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly emailService: EmailService,
-    private readonly cryptoService: CryptoService,
   ) {}
 
   // ✅ Génère un OTP à 6 chiffres
@@ -32,81 +31,137 @@ export class AuthService {
   }
 
   // ✅ Hash du mot de passe
-  private async hashCredentials(credentials: string): Promise<string> {
-    return bcrypt.hash(credentials, 10);
+  private async hashPassword(password: string): Promise<string> {
+    return bcrypt.hash(password, 10);
+  }
+  // ==================== REGISTER ADMIN ====================
+  async registerAdmin(dto: RegisterAdminDto) {
+    const { email, password, nom, prenom, telephone, region, departementId, roleId } = dto;
+
+    // Vérifier si l'email existe déjà
+    const existingUser = await this.prisma.user.findUnique({ where: { email } });
+    if (existingUser) throw new ConflictException('Cet email existe déjà.');
+
+    // Hasher le mot de passe
+    const hashedPassword = await this.hashPassword(password);
+
+    // Créer le User avec isVerified = true
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        nom,
+        prenom,
+        telephone,
+        region,
+        userType: 'ADMIN',
+        isVerified: true, // automatique pour admin
+      },
+    });
+
+    // Créer l'Admin lié
+    const admin = await this.prisma.admin.create({
+      data: {
+        userId: user.id,
+        departementId,
+      },
+    });
+
+    // Assigner le rôle si fourni
+    if (roleId) {
+      await this.prisma.userRole.create({
+        data: {
+          userId: user.id,
+          roleId,
+        },
+      });
+    }
+    return { message: 'Admin créé avec succès', user, admin };
   }
 
-  // ✅ Enregistrement d’un utilisateur + création wallet chiffré
-async register(registerDto: RegisterDto) {
-  const { firstName, lastName, email, phone, password } = registerDto;
-
-  // Vérifier si l'utilisateur existe déjà
-  const existingUser = await this.prisma.user.findUnique({ where: { email } });
-  if (existingUser) throw new ConflictException('Email already exists.');
-
-  // Hash du mot de passe
-  const hashedPassword = await this.hashCredentials(password);
-
-  // Génération de l’OTP
-  const otp = this.generateOtp();
-  const expiration = new Date();
-  expiration.setMinutes(expiration.getMinutes() + 10);
-  this.otpCache.set(email, { otp, expiration });
-
-  // ✅ Création de l'utilisateur
-  const user = await this.prisma.user.create({
-    data: {
-      firstName,
-      lastName,
-      email,
-      phone,
-      passwordHash: hashedPassword,
-      isVerified: false,
+async login(loginDto: LoginDto, userType: 'ADMIN' | 'CANDIDATE') {
+  // 1. Récupérer l'utilisateur avec ses rôles et permissions
+  const user = await this.prisma.user.findUnique({
+    where: { email: loginDto.email },
+    include: {
+      roles: {
+        include: {
+          role: { include: { permissions: { include: { permission: true } } } },
+        },
+      },
+      admin: { include: { departement: true } },
     },
   });
 
-  // ---------------- Point initial à 0 ----------------
-  const point = await this.prisma.point.create({
-    data: {
-      userId: user.id,
-      value: 0,
-    },
-  });
+  if (!user) throw new UnauthorizedException('Email ou mot de passe incorrect.');
 
-  // ---------------- Ranking initial dans la division avec order = 1 ----------------
-  const initialDivision = await this.prisma.division.findFirst({
-    where: { order: 1 },
-  });
-  if (!initialDivision) throw new NotFoundException('Initial division not found');
+  // 2. Vérifier le type d'utilisateur
+  if (user.userType !== userType) {
+    throw new UnauthorizedException(`Utilisateur n'est pas un ${userType.toLowerCase()}.`);
+  }
 
-  await this.prisma.ranking.create({
-    data: {
-      userId: user.id,
-      pointId: point.id,
-      divisionId: initialDivision.id,
-      rank: 1,
-      periodStart: new Date(),
-      periodEnd: new Date(new Date().setMonth(new Date().getMonth() + 1)),
-    },
-  });
+  // 3. Vérifier le mot de passe (pour les admins)
+  if (userType === 'ADMIN') {
+    const isPasswordMatching = await bcrypt.compare(loginDto.password, user.password);
+    if (!isPasswordMatching) throw new UnauthorizedException('Mot de passe incorrect.');
+  }
 
-  // ---------------- Notification bienvenue ----------------
-  await this.prisma.notification.create({
-    data: {
-      userId: user.id,
-      type: 'Welcome',
-      message: `Bienvenue ${firstName} ! Votre compte KmerLinguo a été créé avec succès profitez-en pour apprendre ta langue maternelle.`,
-      isRead: false,
-      isBroadcast: false,
-      sentAt: new Date(),
-    },
-  });
+  // 4. Vérifier si le compte est activé
+  if (!user.isVerified) throw new UnauthorizedException('Compte non vérifié.');
 
-  // ✅ Envoi de l’email de vérification
-  await this.emailService.sendVerificationEmail(email, otp);
+  // 5. Extraire toutes les permissions de tous les rôles
+  const permissions =
+    user.roles?.flatMap((userRole) =>
+      userRole.role.permissions.map((p) => p.permission.name),
+    ) || [];
 
-  return { message: 'User created successfully. Check your email for the OTP.' };
+  // 6. Construire le payload JWT
+  const payload: any = {
+    sub: user.id,
+    email: user.email,
+    userType: user.userType,
+    permissions,
+  };
+
+  // Ajouter info département pour les admins
+  if (userType === 'ADMIN' && user.admin?.departement) {
+    payload.departement = user.admin.departement.nomDep;
+  }
+
+  // 7. Générer le token JWT
+  const access_token = await this.jwtService.signAsync(payload);
+
+  return { access_token, permissions, user };
 }
+
+  // ✅ Enregistrement d’un utilisateur + création wallet chiffré
+// async register(registerDto: RegisterDto) {
+//   const { firstName, lastName, email, phone, password } = registerDto;
+
+//   // Vérifier si l'utilisateur existe déjà
+//   const existingUser = await this.prisma.user.findUnique({ where: { email } });
+//   if (existingUser) throw new ConflictException('Email already exists.');
+
+//   // Hash du mot de passe
+//   const hashedPassword = await this.hashCredentials(password);
+
+//   // Génération de l’OTP
+//   const otp = this.generateOtp();
+//   const expiration = new Date();
+//   expiration.setMinutes(expiration.getMinutes() + 10);
+//   this.otpCache.set(email, { otp, expiration });
+
+//   // ✅ Création de l'utilisateur
+  
+
+//   // ---------------- Notification bienvenue ----------------
+  
+
+//   // ✅ Envoi de l’email de vérification
+//   await this.emailService.sendVerificationEmail(email, otp);
+
+//   return { message: 'User created successfully. Check your email for the OTP.' };
+// }
 
 
   // ✅ Vérification de l’OTP
@@ -143,61 +198,4 @@ async verifyOtp(verifyOtpDto: VerifyOtpDto): Promise<{ message: string; redirect
     await this.emailService.resendVerificationEmail(email, otp);
     return { message: 'OTP resent successfully.' };
   }
-
-  // ✅ Connexion de l'utilisateur
-async login(loginDto: LoginDto) {
-  const { email, password } = loginDto;
-
-  const user = await this.prisma.user.findUnique({
-    where: { email },
-    include: {
-      preferences: {
-        include: { targetLanguage: true }
-      }
-    }
-  });
-
-  if (!user) throw new UnauthorizedException('Mot de passe invalide.');
-
-  const isMatch = await bcrypt.compare(password, user.passwordHash);
-  if (!isMatch) throw new UnauthorizedException('Mot de passe invalide.');
-
-  if (!user.isVerified)
-    throw new BadRequestException('Veuillez vérifier votre compte avant de vous connecter.');
-
-  // 🔹 Récupération de la langue de l’utilisateur
-  const pref = user.preferences?.[0]; // première préférence si elle existe
-  const lang = pref?.targetLanguage
-    ? {
-        id: pref.targetLanguage.id,
-        name: pref.targetLanguage.name,
-        code: pref.targetLanguage.languageCode,
-      }
-    : null;
-
-  // 🔹 Payload du token avec la langue
-  const payload = { 
-    sub: user.id, 
-    email: user.email, 
-    role: user.role,
-    languageId: lang?.id,       // id de la langue
-    languageCode: lang?.code,   // code de la langue
-  };
-  const token = await this.jwtService.signAsync(payload);
-
-  return {
-    access_token: token,
-    user: {
-      id: user.id,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      phone: user.phone,
-      role: user.role,
-      language: lang, // pour affichage côté Flutter
-    }
-  };
-}
-
-
 }

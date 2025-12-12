@@ -6,53 +6,53 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/roles.decorator';
-import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
-import type { RequestWithUser } from './jwt-auth.guard';
 
+/**
+ * Guard pour vérifier les rôles requis
+ * S'exécute après JwtAuthGuard
+ */
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    // ✅ ÉTAPE 1 : Vérifier si la route est publique
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    
-    if (isPublic) {
-      console.log('✅ Route publique détectée dans RolesGuard');
-      return true; // Laisser passer sans vérifier les rôles
-    }
+    // Récupère les rôles requis depuis le décorateur @Roles()
+    const requiredRoles = this.reflector.getAllAndOverride<string[]>(
+      ROLES_KEY,
+      [context.getHandler(), context.getClass()],
+    );
 
-    // ✅ ÉTAPE 2 : Récupérer les rôles requis depuis @Roles()
-    const requiredRoles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    
-    // ✅ ÉTAPE 3 : Si pas de rôles requis, laisser passer
+    // Si aucun rôle n'est requis, on autorise l'accès
     if (!requiredRoles || requiredRoles.length === 0) {
       return true;
     }
 
-    // ✅ ÉTAPE 4 : Vérifier si l'utilisateur a le bon rôle
-    const request = context.switchToHttp().getRequest<RequestWithUser>();
+    // Récupère l'utilisateur de la requête (ajouté par JwtAuthGuard)
+    const request = context.switchToHttp().getRequest();
     const user = request.user;
 
+    // Vérifie si l'utilisateur existe
     if (!user) {
-      console.error('❌ Aucun utilisateur trouvé dans la requête');
-      throw new ForbiddenException('Access denied: User not authenticated');
+      throw new ForbiddenException('Utilisateur non authentifié');
     }
 
-    if (!requiredRoles.includes(user.role)) {
-      console.error(
-        `❌ Accès refusé pour ${user.email} (rôle: ${user.role}). Rôles requis: ${requiredRoles.join(', ')}`
+    // Vérifie si l'utilisateur a les rôles requis
+    const userRoles = user.roles || [];
+    
+    // Extrait les noms des rôles depuis la relation
+    const userRoleNames = userRoles.map((ur: any) => ur.role?.name || ur.name);
+
+    // Vérifie si au moins un rôle correspond
+    const hasRole = requiredRoles.some((role) =>
+      userRoleNames.includes(role),
+    );
+
+    if (!hasRole) {
+      throw new ForbiddenException(
+        `Accès refusé. Rôles requis: ${requiredRoles.join(', ')}`,
       );
-      throw new ForbiddenException('Access denied: Insufficient permissions');
     }
 
-    console.log(`✅ Accès autorisé pour ${user.email} (rôle: ${user.role})`);
     return true;
   }
 }

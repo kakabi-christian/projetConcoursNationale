@@ -1,61 +1,49 @@
 import { Module } from '@nestjs/common';
+import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
-import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
-import { PrismaModule } from '../prisma/prisma.module';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { EmailModule } from '../email/email.module';
-import { CryptoModule } from '../crypto/crypto.module';
-import { PassportModule } from '@nestjs/passport';
 import { JwtStrategy } from './jwt.strategy';
-import { MulterModule } from '@nestjs/platform-express';
-import * as fs from 'fs';
-import * as path from 'path';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RolesGuard } from './guards/roles.guard';
+import { PrismaModule } from '../prisma/prisma.module';
 import { EmailService } from 'src/email/email.service';
 
 @Module({
   imports: [
+    // Module Prisma pour accéder à la BD
     PrismaModule,
-    EmailModule,
-    CryptoModule,
-    MulterModule,
-    ConfigModule.forRoot({ isGlobal: true }),
+    
+    // Module Passport pour l'authentification
     PassportModule.register({ defaultStrategy: 'jwt' }),
+    
+    // Module JWT avec configuration dynamique
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: async (configService: ConfigService): Promise<JwtModuleOptions> => {
-        const privateKeyPath = configService.get<string>('JWT_PRIVATE_KEY_PATH');
-        const publicKeyPath = configService.get<string>('JWT_PUBLIC_KEY_PATH');
-        const expiresInEnv = configService.get<string>('JWT_EXPIRATION_TIME') || '5h';
-
-        if (!privateKeyPath || !publicKeyPath) {
-          throw new Error('JWT keys must be defined in environment variables.');
-        }
-
-        const absolutePrivateKeyPath = path.resolve(process.cwd(), privateKeyPath);
-        const absolutePublicKeyPath = path.resolve(process.cwd(), publicKeyPath);
-
-        if (!fs.existsSync(absolutePrivateKeyPath) || !fs.existsSync(absolutePublicKeyPath)) {
-          throw new Error(`JWT key files not found at ${absolutePrivateKeyPath} or ${absolutePublicKeyPath}`);
-        }
-
-        const privateKey = fs.readFileSync(absolutePrivateKeyPath, 'utf8');
-        const publicKey = fs.readFileSync(absolutePublicKeyPath, 'utf8');
-
-        return {
-          privateKey,
-          publicKey,
-          signOptions: {
-            algorithm: 'RS256',
-            expiresIn: expiresInEnv as '30m' | '1h' | '15m', // <-- ici tu fixes un StringValue compatible
-          },
-        };
-      },
+      useFactory: (configService: ConfigService): JwtModuleOptions => ({
+        secret: configService.get<string>('JWT_SECRET') || 'your-secret-key',
+        signOptions: {
+          expiresIn: configService.get('JWT_EXPIRATION') || '7d',
+        },
+      }),
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [AuthService,JwtModule],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    JwtAuthGuard,
+    RolesGuard,
+    EmailService,
+  ],
+  exports: [
+    AuthService,
+    JwtAuthGuard,
+    RolesGuard,
+    PassportModule,
+    JwtModule,
+  ],
 })
 export class AuthModule {}
