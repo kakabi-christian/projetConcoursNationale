@@ -1,0 +1,53 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Patch,
+  Delete,
+  UseGuards,
+} from '@nestjs/common';
+import { NiveauService } from './niveau.service';
+import { CreateNiveauDto } from './dto/create-niveau.dto';
+import { UpdateNiveauDto } from './dto/update-niveau.dto';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/auth/guards/permissions.guard';
+import { Permissions } from 'src/auth/decorators/permissions.decorator';
+import { Public } from 'src/auth/decorators/public.decorator';
+
+@Controller('niveaux')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class NiveauController {
+  constructor(private readonly niveauService: NiveauService) {}
+
+  @Post()
+  @Permissions('creer_niveau')
+  create(@Body() createNiveauDto: CreateNiveauDto) {
+    return this.niveauService.create(createNiveauDto);
+  }
+
+  @Get()
+  @Public()
+  findAll() {
+    return this.niveauService.findAll();
+  }
+
+  @Get(':id')
+  @Public()
+  findOne(@Param('id') id: string) {
+    return this.niveauService.findOne(id);
+  }
+
+  @Patch(':id')
+  @Permissions('modifier_niveau')
+  update(@Param('id') id: string, @Body() updateNiveauDto: UpdateNiveauDto) {
+    return this.niveauService.update(id, updateNiveauDto);
+  }
+
+  @Delete(':id')
+  @Permissions('supprimer_niveau')
+  remove(@Param('id') id: string) {
+    return this.niveauService.remove(id);
+  }
+}

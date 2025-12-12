@@ -27,6 +27,9 @@ import { SessionModule } from './session/session.module';
 import { PermissionModule } from './permission/permission.module';
 import { ConcoursModule } from './concours/concours.module';
 import { PaiementModule } from './paiement/paiement.module';
+import { FiliereModule } from './filiere/filiere.module';
+import { NiveauModule } from './niveau/niveau.module';
+import { EpreuveModule } from './epreuve/epreuve.module';
 @Module({
   imports: [
     // 🔸 Configuration globale de l’environnement
@@ -67,6 +70,12 @@ import { PaiementModule } from './paiement/paiement.module';
     ConcoursModule,
 
     PaiementModule,
+
+    FiliereModule,
+
+    NiveauModule,
+
+    EpreuveModule,
 
     
   ],

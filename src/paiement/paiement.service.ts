@@ -8,7 +8,6 @@ import * as QRCode from 'qrcode';
 export class PaiementService {
   constructor(private prisma: PrismaService) {}
 
-  // Générer le numéro de transaction basé uniquement sur la date et l'heure
   private generateTransactionNumber(): string {
     const now = new Date();
     const year = now.getFullYear();
@@ -21,22 +20,13 @@ export class PaiementService {
   }
 
   async createPaiement(createPaiementDto: CreatePaiementDto) {
-    console.log('[PaiementService] Début création paiement', createPaiementDto);
-
-    // Vérifier si le concours existe
     const concours = await this.prisma.concours.findUnique({
       where: { id: createPaiementDto.concoursId },
     });
-    if (!concours) {
-      console.error('[PaiementService] Concours introuvable :', createPaiementDto.concoursId);
-      throw new NotFoundException('Concours introuvable');
-    }
+    if (!concours) throw new NotFoundException('Concours introuvable');
 
-    // Générer le numéro de transaction
     const numeroTransaction = this.generateTransactionNumber();
-    console.log('[PaiementService] Numéro de transaction généré :', numeroTransaction);
 
-    // Créer le paiement
     const paiement = await this.prisma.paiement.create({
       data: {
         ...createPaiementDto,
@@ -45,16 +35,22 @@ export class PaiementService {
         numeroTransaction,
       },
     });
-    console.log('[PaiementService] Paiement créé :', paiement);
 
-    // Générer le numéro de reçu
     const numeroRecu = `REC-${Math.floor(Math.random() * 1000000)}`;
-    console.log('[PaiementService] Numéro de reçu généré :', numeroRecu);
 
-    // Générer le QR Code (contenu = numéro du reçu)
-    const qrCodeDataUrl = await QRCode.toDataURL(numeroRecu);
+    // Contenu du QR Code : un JSON avec les infos de l'utilisateur et du paiement
+    const qrContent = JSON.stringify({
+      nomComplet: createPaiementDto.nomComplet,
+      email: createPaiementDto.email,
+      telephone: createPaiementDto.telephone,
+      numeroTransaction,
+      numeroRecu,
+      concours: concours.intitule,
+      montant: concours.montant
+    });
 
-    // Créer le reçu associé
+    const qrCodeDataUrl = await QRCode.toDataURL(qrContent);
+
     const recu = await this.prisma.recu.create({
       data: {
         paiementId: paiement.id,
@@ -65,14 +61,25 @@ export class PaiementService {
         qrCode: qrCodeDataUrl,
       },
     });
-    console.log('[PaiementService] Reçu créé :', recu);
 
-    console.log('[PaiementService] Fin création paiement');
-
-    // Retour clair pour le frontend
-    return {
-      paiement, // contient numeroTransaction
-      recu,     // contient qrCode, numeroRecu, etc.
-    };
+    return { paiement, recu };
   }
+  async findRecuByEmail(email: string) {
+  // Cherche le paiement correspondant à cet email
+  const recu = await this.prisma.recu.findFirst({
+    where: {
+      paiement: {
+        email: email,
+      },
+    },
+    include: {
+      paiement: true, // inclure les infos du paiement si besoin
+    },
+  });
+
+  if (!recu) throw new NotFoundException('Aucun reçu trouvé pour cet email');
+
+  return recu;
+}
+
 }

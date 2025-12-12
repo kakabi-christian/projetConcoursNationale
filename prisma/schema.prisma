@@ -348,10 +348,7 @@ model Epreuve {
   
   niveauId        String?
   niveau          Niveau?         @relation(fields: [niveauId], references: [id])
-  
-  salleId         String?
-  salle           Salle?          @relation(fields: [salleId], references: [id])
-  
+    
   archives        Archive[]
 
   createdAt       DateTime        @default(now())
@@ -373,9 +370,6 @@ model Niveau {
 model Salle {
   id              String          @id @default(uuid())
   codeClasse      String          @unique
-  
-  epreuves        Epreuve[]
-
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 }
