@@ -15,14 +15,14 @@ export class EpreuveService {
 
   async findAll() {
     return this.prisma.epreuve.findMany({
-      include: { filiere: true, niveau: true, archives: true }, // inclut relations et archives
+      include: { filiere: true, specialite: true, niveau: true, archives: true },
     });
   }
 
   async findOne(id: string) {
     const epreuve = await this.prisma.epreuve.findUnique({
       where: { id },
-      include: { filiere: true, niveau: true, archives: true },
+      include: { filiere: true, specialite: true, niveau: true, archives: true },
     });
     if (!epreuve) throw new NotFoundException('Épreuve non trouvée');
     return epreuve;
@@ -41,11 +41,18 @@ export class EpreuveService {
     });
   }
 
-  // 🔹 Récupérer toutes les épreuves d'une filière avec leurs archives et niveau
-  async findByFiliere(filiereId: string) {
+  // 🔹 Récupérer toutes les épreuves d'une spécialité avec leurs relations
+  async findBySpecialite(specialiteId: string) {
+    // Vérifier que la spécialité existe
+    const specialite = await this.prisma.specialite.findUnique({
+      where: { id: specialiteId },
+    });
+    if (!specialite) throw new NotFoundException('Spécialité non trouvée');
+
     return this.prisma.epreuve.findMany({
-      where: { filiereId },
-      include: { niveau: true, archives: true },
+      where: { specialiteId },
+      include: { filiere: true, niveau: true, archives: true },
+      orderBy: { nomEpreuve: 'asc' },
     });
   }
 }

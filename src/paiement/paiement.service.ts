@@ -169,4 +169,40 @@ export class PaiementService {
 
     doc.end();
   }
+  async verifyRecuForRegistration(numeroRecu: string) {
+    // Chercher le reçu
+    const recu = await this.prisma.recu.findUnique({
+      where: { numeroRecu },
+      include: {
+        paiement: {
+          include: {
+            concours: true,
+          },
+        },
+      },
+    });
+
+    // Vérifier si le reçu existe
+    if (!recu) {
+      throw new NotFoundException('Numéro de reçu invalide');
+    }
+
+    // Vérifier si le reçu n'a pas déjà été utilisé
+    if (recu.estUtilise) {
+      throw new BadRequestException('Ce reçu a déjà été utilisé pour une inscription');
+    }
+
+    // Retourner les infos du reçu + paiement (pour pré-remplir le formulaire)
+    return {
+    message: 'Reçu valide',
+      numeroRecu: recu.numeroRecu,
+      paiement: {
+        nomComplet: recu.paiement?.nomComplet ?? 'N/A',
+        email: recu.paiement?.email ?? 'N/A',
+        telephone: recu.paiement?.telephone ?? 'N/A',
+        concours: recu.paiement?.concours?.intitule ?? recu.concours,
+        montant: recu.montant,
+      },
+    }
+  }
 }

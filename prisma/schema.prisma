@@ -34,12 +34,6 @@ enum StatutEcole {
   FERME
 }
 
-enum StatutArrete {
-  EN_COURS
-  TERMINE
-  ARCHIVE
-}
-
 enum UserType {
   ADMIN
   CANDIDATE
@@ -62,11 +56,11 @@ enum TypeMention {
 model User {
   id              String          @id @default(uuid())
   email           String          @unique
-  password        String
+  password        String?
   nom             String?
   prenom          String?
   telephone       String?
-  isVerified      Boolean         @default(false)
+  isVerified      Boolean         @default(true)
   region          Region?
   userType        UserType        @default(CANDIDATE)
   
@@ -145,14 +139,15 @@ model Admin {
 model Candidate {
   id              String              @id @default(uuid())
   matricule       String?             @unique
-  cni             String?             @unique
   dateNaissance   DateTime?
   lieuNaissance   String?
   sexe            String?
   nationalite     String?
   ville           String?
-  telephoneTuteur String?
-  nomTuteur       String?
+  telephonePere String?
+  nomPere      String?
+  telephoneMere String?
+  nomMere   String?
   region          Region?
   
   
@@ -222,11 +217,7 @@ model Paiement {
   
   enrollementId   String?    @unique
   enrollement     Enrollement? @relation(fields: [enrollementId], references: [id])
-  
-  centreDepotId   String? 
-  centreDepot     Depot?     @relation(fields: [centreDepotId], references: [id])
-  
-  recu            Recu?      // relation inverse (1:1)
+    recu            Recu?      // relation inverse (1:1)
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -247,22 +238,22 @@ model Session {
 }
 
 model Concours {
-  id        String    @id @default(uuid())
-  code      String    @unique
-  intitule  String
-  montant   Float?
+  id            String          @id @default(uuid())
+  code          String          @unique
+  intitule      String
+  montant       Float?
 
-  anneeId   String?
-  annee     Annee?    @relation(fields: [anneeId], references: [id])
+  anneeId       String?
+  annee         Annee?          @relation(fields: [anneeId], references: [id])
 
   sessions      Session[]
   enrollements  Enrollement[]
-  paiements     Paiement[]     // ← Relation inverse ajoutée
+  paiements     Paiement[]
+  piecesDossier PieceDossier[]  @relation("ConcoursPieces") // Relation many-to-many
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 }
-
 model Enrollement {
   id                      String              @id @default(uuid())
   candidatId              String
@@ -276,10 +267,7 @@ model Enrollement {
   
   documentId              String?             @unique
   document                Documents?          @relation("EnrollementDocuments", fields: [documentId], references: [id])
-  
-  documentGeneratedId     String?             @unique
-  generatedDocument       GeneratedDocuments? @relation(fields: [documentGeneratedId], references: [id])
-  
+    
   paiement                Paiement?
 
   centreExamenId          String? 
@@ -289,15 +277,6 @@ model Enrollement {
   updatedAt               DateTime            @updatedAt
 }
 
-model GeneratedDocuments {
-  id                      String          @id @default(uuid())
-  qrCode                  String?
-  
-  enrollement             Enrollement?
-
-  createdAt               DateTime        @default(now())
-  updatedAt               DateTime        @updatedAt
-}
 
 
 model Annee {
@@ -326,26 +305,32 @@ model Departement {
 }
 
 model Filiere {
-  id              String          @id @default(uuid())
+  id              String        @id @default(uuid())
   intitule        String
   description     String?
-  
-  departementId   String?
-  departement     Departement?    @relation(fields: [departementId], references: [id])
-  epreuves        Epreuve[]
 
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  departementId   String?
+  departement     Departement?  @relation(fields: [departementId], references: [id])
+
+  epreuves        Epreuve[]
+  specialites     Specialite[]  // ✅ relation avec Specialite
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 }
+
 
 model Epreuve {
   id              String          @id @default(uuid())
   nomEpreuve      String
   nonEliminatoire Boolean?
-  
+
   filiereId       String
   filiere         Filiere         @relation(fields: [filiereId], references: [id])
-  
+
+  specialiteId    String?         // ✅ liaison optionnelle avec Specialite
+  specialite      Specialite?     @relation(fields: [specialiteId], references: [id])
+
   niveauId        String?
   niveau          Niveau?         @relation(fields: [niveauId], references: [id])
     
@@ -354,6 +339,7 @@ model Epreuve {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 }
+
 
 model Niveau {
   id              String          @id @default(uuid())
@@ -375,53 +361,39 @@ model Salle {
 }
 
 model Specialite {
-  id              String          @id @default(uuid())
-  libelle         String
-  code            String          @unique
-  isActive        Boolean         @default(true)
-  
-  candidats       CandidatSpecialite[]
-  
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id          String   @id @default(uuid())
+  libelle     String
+  code        String   @unique
+  isActive    Boolean  @default(true)
+
+  filiereId   String?                // clé étrangère optionnelle
+  filiere     Filiere? @relation(fields: [filiereId], references: [id])
+
+  candidats   CandidatSpecialite[]
+
+  epreuves    Epreuve[]              // ✅ relation inverse : une spécialité a plusieurs épreuves
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
-model Ecole {
-  id              String          @id @default(uuid())
-  nomEcole        String
-  statut          StatutEcole     @default(OUVERT)
-  
-  centresExamen   CentreExamen[]
 
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-}
+
 
 model CentreExamen {
   id              String          @id @default(uuid())
   intitule        String
-  lieuCentre      String?
-
-  ecoleId         String?
-  ecole           Ecole?          @relation(fields: [ecoleId], references: [id])
-  
-  depots          Depot[]
+  lieuCentre      String?  
   enrollements    Enrollement[]
 
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 }
 
-model Depot {
+model CentreDepot {
   id              String          @id @default(uuid())
   intitule        String
   lieuDepot       String          @unique
-  
-  centreExamenId  String
-  centreExamen    CentreExamen    @relation(fields: [centreExamenId], references: [id])
-  
-  paiements       Paiement[]
-
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 }
@@ -429,12 +401,14 @@ model Depot {
 
 
 model PieceDossier {
-  id              String          @id @default(uuid())
-  nom             String
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-}
+  id            String          @id @default(uuid())
+  nom           String
 
+  concours      Concours[]      @relation("ConcoursPieces") // Relation inverse
+
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}
 model Recu {
   id            String   @id @default(uuid())
   numeroRecu    String   @unique

@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsUUID, IsNumber, IsArray, ArrayNotEmpty } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsNumber, IsArray } from 'class-validator';
 
 export class CreateConcoursDto {
   @IsString()
@@ -19,4 +19,9 @@ export class CreateConcoursDto {
   @IsUUID("4", { each: true })
   @IsOptional()
   sessionIds?: string[];  // IDs des sessions liées, facultatif
+
+  @IsArray()
+  @IsUUID("4", { each: true })
+  @IsOptional()
+  pieceDossierIds?: string[]; // <-- IDs des pièces de dossier à associer
 }

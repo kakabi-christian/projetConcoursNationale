@@ -27,6 +27,11 @@ import { FiliereModule } from './filiere/filiere.module';
 import { NiveauModule } from './niveau/niveau.module';
 import { EpreuveModule } from './epreuve/epreuve.module';
 import { ArchiveModule } from './archive/archive.module';
+import { PieceDossierModule } from './piece-dossier/piece-dossier.module';
+import { SpecialiteModule } from './specialite/specialite.module';
+import { CentreExamenModule } from './centre-examen/centre-examen.module';
+import { CentreDepotService } from './centre-depot/centre-depot.service';
+import { CentreDepotModule } from './centre-depot/centre-depot.module';
 
 @Module({
   imports: [
@@ -63,6 +68,10 @@ import { ArchiveModule } from './archive/archive.module';
     NiveauModule,
     EpreuveModule,
     ArchiveModule,
+    PieceDossierModule,
+    SpecialiteModule,
+    CentreExamenModule,
+    CentreDepotModule,
   ],
   controllers: [AppController],
   providers: [
@@ -71,6 +80,7 @@ import { ArchiveModule } from './archive/archive.module';
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
+    CentreDepotService,
   ],
 })
 export class AppModule {}

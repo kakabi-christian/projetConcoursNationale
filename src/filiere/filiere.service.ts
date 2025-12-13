@@ -2,7 +2,6 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateFiliereDto } from './dto/create-filiere.dto';
 import { UpdateFiliereDto } from './dto/update-filiere.dto';
-
 @Injectable()
 export class FiliereService {
   constructor(private prisma: PrismaService) {}
@@ -15,7 +14,7 @@ export class FiliereService {
 
   async findAll() {
     return this.prisma.filiere.findMany({
-      include: { departement: true }, // inclut le département associé
+      include: { departement: true },
     });
   }
 
@@ -41,11 +40,15 @@ export class FiliereService {
     });
   }
 
-  // 🔹 Récupérer les filières d'un département (pour React)
+  // 🔹 Récupérer les filières d'un département avec leurs spécialités
   async findByDepartement(departementId: string) {
     return this.prisma.filiere.findMany({
       where: { departementId },
-      include: { departement: true },
+      include: {
+        departement: true,
+        specialites: true, // 🔹 Ajout pour inclure les spécialités
+      },
+      orderBy: { intitule: 'asc' },
     });
   }
 }

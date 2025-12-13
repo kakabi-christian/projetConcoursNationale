@@ -1,10 +1,17 @@
-import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
+// src/auth/dto/register-candidate-step1.dto.ts
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsString,
+  IsEnum,
+} from 'class-validator';
+import { Region } from '@prisma/client';
 
-export class RegisterCandidateStep1Dto {
-  @IsString({ message: 'Numéro de reçu invalide' })
-  @IsNotEmpty({ message: 'Numéro de reçu requis' })
-  numeroRecu: string;
-
+/**
+ * DTO pour l'étape 1 de l'inscription : Création du User
+ * Le candidat renseigne ses informations de base après validation du reçu
+ */
+export class CreateUserStep1Dto {
   @IsString({ message: 'Le nom doit être une chaîne de caractères' })
   @IsNotEmpty({ message: 'Nom requis' })
   nom: string;
@@ -17,7 +24,11 @@ export class RegisterCandidateStep1Dto {
   @IsNotEmpty({ message: 'Email requis' })
   email: string;
 
-  @IsString({ message: 'Téléphone requis' })
+  @IsString({ message: 'Le téléphone doit être une chaîne de caractères' })
   @IsNotEmpty({ message: 'Téléphone requis' })
   telephone: string;
+
+  @IsEnum(Region, { message: 'Région invalide' })
+  @IsNotEmpty({ message: 'Région requise' })
+  region: Region;
 }

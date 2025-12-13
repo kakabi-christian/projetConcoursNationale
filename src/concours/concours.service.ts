@@ -8,7 +8,7 @@ export class ConcoursService {
   constructor(private prisma: PrismaService) {}
 
   async create(createConcoursDto: CreateConcoursDto) {
-    const { anneeId, sessionIds, ...rest } = createConcoursDto;
+    const { anneeId, sessionIds, pieceDossierIds, ...rest } = createConcoursDto;
 
     return this.prisma.concours.create({
       data: {
@@ -16,17 +16,21 @@ export class ConcoursService {
         // Lier l'année si fournie
         annee: anneeId ? { connect: { id: anneeId } } : undefined,
         // Lier les sessions si fournies
-        sessions: sessionIds
+        sessions: sessionIds?.length
           ? { connect: sessionIds.map((id) => ({ id })) }
           : undefined,
+        // Lier les pièces de dossier si fournies
+        piecesDossier: pieceDossierIds?.length
+          ? { connect: pieceDossierIds.map((id) => ({ id })) }
+          : undefined,
       },
-      include: { sessions: true },
+      include: { sessions: true, piecesDossier: true },
     });
   }
 
   async findAll() {
     return this.prisma.concours.findMany({
-      include: { sessions: true },
+      include: { sessions: true, piecesDossier: true },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -34,7 +38,7 @@ export class ConcoursService {
   async findOne(id: string) {
     const concours = await this.prisma.concours.findUnique({
       where: { id },
-      include: { sessions: true },
+      include: { sessions: true, piecesDossier: true },
     });
     if (!concours) throw new NotFoundException('Concours non trouvé');
     return concours;
@@ -42,18 +46,21 @@ export class ConcoursService {
 
   async update(id: string, updateConcoursDto: UpdateConcoursDto) {
     await this.findOne(id);
-    const { anneeId, sessionIds, ...rest } = updateConcoursDto;
+    const { anneeId, sessionIds, pieceDossierIds, ...rest } = updateConcoursDto;
 
     return this.prisma.concours.update({
       where: { id },
       data: {
         ...rest,
         annee: anneeId ? { connect: { id: anneeId } } : undefined,
-        sessions: sessionIds
-          ? { connect: sessionIds.map((id) => ({ id })) }
+        sessions: sessionIds?.length
+          ? { set: sessionIds.map((id) => ({ id })) } // remplace les anciennes
+          : undefined,
+        piecesDossier: pieceDossierIds?.length
+          ? { set: pieceDossierIds.map((id) => ({ id })) } // remplace les anciennes
           : undefined,
       },
-      include: { sessions: true },
+      include: { sessions: true, piecesDossier: true },
     });
   }
 

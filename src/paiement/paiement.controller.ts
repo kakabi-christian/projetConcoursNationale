@@ -44,4 +44,9 @@ export class PaiementController {
     // Générer et envoyer le PDF directement dans la réponse
     this.paiementService.generatePdf(recuData, res);
   }
+  @Post('inscription/verify-recu')
+  @Public()
+  async verifyRecuForRegistration(@Body() verifyRecuDto: { numeroRecu: string }) {
+    return this.paiementService.verifyRecuForRegistration(verifyRecuDto.numeroRecu);
+  }
 }

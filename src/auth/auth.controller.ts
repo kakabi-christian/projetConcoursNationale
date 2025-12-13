@@ -4,19 +4,22 @@ import { LoginDto } from './dto/login.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { Public } from './decorators/public.decorator';
 import { RegisterAdminDto } from './dto/register-admin.dto';
+import { CreateUserStep1Dto } from './dto/RegisterCandidateStep1Dto';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // ==================== REGISTER ADMIN ====================
   @Post('register-admin')
   @Public()
   async register(@Body() dto: RegisterAdminDto) {
     return this.authService.registerAdmin(dto);
   }
 
- @Post('login')
- @Public()
+  // ==================== LOGIN ====================
+  @Post('login')
+  @Public()
   async login(
     @Body() dto: LoginDto & { userType: 'ADMIN' | 'CANDIDATE' }, // Ajouter userType dans le body
   ) {
@@ -29,9 +32,10 @@ export class AuthController {
     return this.authService.login({ email, password }, userType);
   }
 
-  @Post('verify-otp')
+  // ==================== REGISTER CANDIDATE STEP 2 ====================
+  @Post('register-candidate-step2')
   @Public()
-  async verifyOtp(@Body() dto: VerifyOtpDto) {
-    return this.authService.verifyOtp(dto);
+  async registerCandidateStep2(@Body() dto: CreateUserStep1Dto) {
+    return this.authService.registerCandidateStep1(dto);
   }
 }

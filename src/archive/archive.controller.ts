@@ -32,17 +32,14 @@ export class ArchiveController {
   @Permissions('creer_archive')
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: diskStorage({
-        // ✅ chemin absolu vers le dossier uploads à la racine du backend
-        destination: join(__dirname, '..', '..', 'uploads'),
-        
-        filename: (req, file, cb) => {
-          const uniqueSuffix = uuidv4() + extname(file.originalname);
-          cb(null, uniqueSuffix);
-        },
-        
-      }),
+    storage: diskStorage({
+      destination: join(process.cwd(), 'uploads'), // ✅ dossier public
+      filename: (req, file, cb) => {
+        const uniqueSuffix = uuidv4() + extname(file.originalname);
+        cb(null, uniqueSuffix);
+      },
     }),
+  }),
     
   )
   

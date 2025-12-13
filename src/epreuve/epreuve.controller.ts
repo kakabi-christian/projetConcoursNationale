@@ -50,10 +50,11 @@ export class EpreuveController {
   remove(@Param('id') id: string) {
     return this.epreuveService.remove(id);
   }
-  @Get('filiere/:id')
-@Public()
-findByFiliere(@Param('id') id: string) {
-  return this.epreuveService.findByFiliere(id);
-}
 
+  // 🔹 NOUVELLE ROUTE : épreuves par spécialité
+  @Get('specialite/:specialiteId')
+  @Public()
+  findBySpecialite(@Param('specialiteId') specialiteId: string) {
+    return this.epreuveService.findBySpecialite(specialiteId);
+  }
 }
