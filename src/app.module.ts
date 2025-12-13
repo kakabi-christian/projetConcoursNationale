@@ -30,9 +30,9 @@ import { ArchiveModule } from './archive/archive.module';
 
 @Module({
   imports: [
-    // ✅ Configuration des fichiers statiques (uploads)
+    // ✅ CORRECTION ICI (IMPORTANT)
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'uploads'),
+      rootPath: join(process.cwd(), 'uploads'),
       serveRoot: '/uploads',
     }),
 

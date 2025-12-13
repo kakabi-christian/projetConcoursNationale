@@ -38,6 +38,30 @@ export class EmailService {
       this.logger.error('Error during transporter initialization:', error.message);
     }
   }
+  async sendOtpEmail(to: string, code: string) {
+  try {
+    const subject = '🔐 Code de vérification pour votre reçu';
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #2c3e50;">Code de vérification</h2>
+        <p>Bonjour,</p>
+        <p>Vous avez demandé à récupérer votre reçu de paiement.</p>
+        <p>Votre code de vérification est :</p>
+        <div style="background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #007bff; border-radius: 8px; margin: 20px 0;">
+          ${code}
+        </div>
+        <p style="color: #e74c3c;">⚠️ Ce code expire dans <strong>10 minutes</strong>.</p>
+        <p>Si vous n'avez pas fait cette demande, ignorez cet email.</p>
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #ddd;">
+        <p style="color: #7f8c8d; font-size: 12px;">Système de gestion des concours</p>
+      </div>
+    `;
+    await this.sendMail(to, subject, html);
+  } catch (error) {
+    this.logger.error(`Error in sendOtpEmail: ${error.message}`);
+    throw error;
+  }
+}
 
   private async sendMail(to: string, subject: string, html: string) {
     const from = this.configService.get<string>('EMAIL_USER');
