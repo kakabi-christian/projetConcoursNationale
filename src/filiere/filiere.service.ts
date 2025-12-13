@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateFiliereDto } from './dto/create-filiere.dto';
 import { UpdateFiliereDto } from './dto/update-filiere.dto';
@@ -20,10 +20,12 @@ export class FiliereService {
   }
 
   async findOne(id: string) {
-    return this.prisma.filiere.findUnique({
+    const filiere = await this.prisma.filiere.findUnique({
       where: { id },
       include: { departement: true },
     });
+    if (!filiere) throw new NotFoundException('Filière non trouvée');
+    return filiere;
   }
 
   async update(id: string, updateFiliereDto: UpdateFiliereDto) {
@@ -36,6 +38,14 @@ export class FiliereService {
   async remove(id: string) {
     return this.prisma.filiere.delete({
       where: { id },
+    });
+  }
+
+  // 🔹 Récupérer les filières d'un département (pour React)
+  async findByDepartement(departementId: string) {
+    return this.prisma.filiere.findMany({
+      where: { departementId },
+      include: { departement: true },
     });
   }
 }

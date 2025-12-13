@@ -4,10 +4,11 @@ import { UpdateAnneeDto } from './dto/update-annee.dto';
 import { AnneeService } from './annee-academique.service';
 import { PermissionsGuard } from 'src/auth/guards/permissions.guard';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { Permissions } from 'src/auth/decorators/permissions.decorator'; // <- ici
+import { Permissions } from 'src/auth/decorators/permissions.decorator';
+import { Public } from 'src/auth/decorators/public.decorator'; // <- ajouté
 
 @Controller('annees')
-@UseGuards(JwtAuthGuard, PermissionsGuard) // ajoute JwtAuthGuard pour sécuriser avec JWT
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AnneeController {
   constructor(private readonly anneeService: AnneeService) {}
 
@@ -18,13 +19,13 @@ export class AnneeController {
   }
 
   @Get()
-  @Permissions("voir_annees_academiques")
+  @Public() // <-- rendu public pour le front
   findAll() {
     return this.anneeService.findAll();
   }
 
   @Get(':id')
-  @Permissions("voir_annee_academique")
+  @Public() // <-- rendu public pour le front
   findOne(@Param('id') id: string) {
     return this.anneeService.findOne(id);
   }

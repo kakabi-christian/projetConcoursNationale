@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEpreuveDto } from './dto/create-epreuve.dto';
 import { UpdateEpreuveDto } from './dto/update-epreuve.dto';
@@ -15,15 +15,17 @@ export class EpreuveService {
 
   async findAll() {
     return this.prisma.epreuve.findMany({
-      include: { filiere: true, niveau: true }, // inclut les relations
+      include: { filiere: true, niveau: true, archives: true }, // inclut relations et archives
     });
   }
 
   async findOne(id: string) {
-    return this.prisma.epreuve.findUnique({
+    const epreuve = await this.prisma.epreuve.findUnique({
       where: { id },
-      include: { filiere: true, niveau: true },
+      include: { filiere: true, niveau: true, archives: true },
     });
+    if (!epreuve) throw new NotFoundException('Épreuve non trouvée');
+    return epreuve;
   }
 
   async update(id: string, updateEpreuveDto: UpdateEpreuveDto) {
@@ -36,6 +38,14 @@ export class EpreuveService {
   async remove(id: string) {
     return this.prisma.epreuve.delete({
       where: { id },
+    });
+  }
+
+  // 🔹 Récupérer toutes les épreuves d'une filière avec leurs archives et niveau
+  async findByFiliere(filiereId: string) {
+    return this.prisma.epreuve.findMany({
+      where: { filiereId },
+      include: { niveau: true, archives: true },
     });
   }
 }

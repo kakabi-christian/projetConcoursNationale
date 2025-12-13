@@ -13,7 +13,7 @@ import { CreateConcoursDto } from './dto/create-concours.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/auth/guards/permissions.guard';
 import { Permissions } from 'src/auth/decorators/permissions.decorator';
-import { UpdateConcoursDto } from './update-concours.dto';
+import { UpdateConcoursDto } from './dto/update-concours.dto';
 import { Public } from 'src/auth/decorators/public.decorator';
 @Controller('concours')
 @UseGuards(JwtAuthGuard, PermissionsGuard) // sécurise toutes les routes avec JWT + permissions

@@ -1,28 +1,21 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import * as express from 'express';
-import { join } from 'path';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  // ✅ Activer CORS pour React (port 3001)
   app.enableCors({
-    origin: true,
+    origin: 'http://localhost:3001', // React frontend
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
   });
 
-  // Servir le dossier uploads
-  app.use('/uploads', express.static(join(__dirname, '..', 'uploads'), {
-    setHeaders: (res, path) => {
-      if (path.endsWith('.mp3')) res.setHeader('Content-Type', 'audio/mpeg');
-      else if (path.endsWith('.wav')) res.setHeader('Content-Type', 'audio/wav');
-      else if (path.endsWith('.png')) res.setHeader('Content-Type', 'image/png');
-      else if (path.endsWith('.jpg') || path.endsWith('.jpeg')) res.setHeader('Content-Type', 'image/jpeg');
-    }
-  }));
-
-  await app.listen(process.env.PORT ?? 3000);
-  console.log(`🚀 Server running on http://localhost:${process.env.PORT ?? 3000}`);
+  const port = process.env.PORT ?? 3000;
+  await app.listen(port);
+  console.log(`🚀 Server running on http://localhost:${port}`);
+  console.log(`📂 Static files: http://localhost:${port}/uploads/`);
 }
 bootstrap();

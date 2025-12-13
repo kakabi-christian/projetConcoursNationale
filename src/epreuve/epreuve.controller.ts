@@ -50,4 +50,10 @@ export class EpreuveController {
   remove(@Param('id') id: string) {
     return this.epreuveService.remove(id);
   }
+  @Get('filiere/:id')
+@Public()
+findByFiliere(@Param('id') id: string) {
+  return this.epreuveService.findByFiliere(id);
+}
+
 }

@@ -55,4 +55,11 @@ export class FiliereController {
   remove(@Param('id') id: string) {
     return this.filiereService.remove(id);
   }
+
+  @Get('departement/:id')
+@Public()
+findByDepartement(@Param('id') id: string) {
+  return this.filiereService.findByDepartement(id);
+}
+
 }

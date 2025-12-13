@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateConcoursDto } from './dto/create-concours.dto';
-import { UpdateConcoursDto } from './update-concours.dto';
+import { UpdateConcoursDto } from './dto/update-concours.dto';
 
 @Injectable()
 export class ConcoursService {
