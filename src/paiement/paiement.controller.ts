@@ -1,11 +1,11 @@
-
 // src/paiement/paiement.controller.ts
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Res, NotFoundException } from '@nestjs/common';
 import { PaiementService } from './paiement.service';
 import { CreatePaiementDto } from './dto/create-paiement.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
-import { Public } from 'src/auth/decorators/public.decorator';
 import { VerifyOtpDto } from './dto/verifiy-otopdto';
+import { Public } from 'src/auth/decorators/public.decorator';
+import type { Response } from 'express';
 
 @Controller('paiement')
 export class PaiementController {
@@ -30,5 +30,18 @@ export class PaiementController {
   @Public()
   async verifyOtpAndGetRecu(@Body() verifyOtpDto: VerifyOtpDto) {
     return this.paiementService.verifyOtpAndGetRecu(verifyOtpDto);
+  }
+
+  // 📄 Endpoint pour générer et afficher le PDF à partir du numéro de transaction
+  @Get('recu/:numeroTransaction/pdf')
+  @Public()
+  async getRecuPdf(@Param('numeroTransaction') numeroTransaction: string, @Res() res: Response) {
+    const recuData = await this.paiementService.getRecuByTransaction(numeroTransaction);
+    if (!recuData) {
+      throw new NotFoundException('Reçu introuvable');
+    }
+
+    // Générer et envoyer le PDF directement dans la réponse
+    this.paiementService.generatePdf(recuData, res);
   }
 }
