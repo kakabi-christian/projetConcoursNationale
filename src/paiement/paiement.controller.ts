@@ -44,9 +44,18 @@ export class PaiementController {
     // Générer et envoyer le PDF directement dans la réponse
     this.paiementService.generatePdf(recuData, res);
   }
+
+  // Vérifier un reçu pour l’inscription
   @Post('inscription/verify-recu')
   @Public()
   async verifyRecuForRegistration(@Body() verifyRecuDto: { numeroRecu: string }) {
     return this.paiementService.verifyRecuForRegistration(verifyRecuDto.numeroRecu);
+  }
+
+  // 🔹 Nouvel endpoint : récupérer les infos d’un paiement par numéro de reçu
+  @Get('recu/:numeroRecu/info')
+  @Public()
+  async getPaiementInfo(@Param('numeroRecu') numeroRecu: string) {
+    return this.paiementService.getPaiementInfoByRecu(numeroRecu);
   }
 }

@@ -1,32 +1,71 @@
-import { IsNotEmpty, IsString, IsDateString, IsEnum, IsOptional } from 'class-validator';
-import { Region } from '@prisma/client';
+import { 
+  IsNotEmpty, 
+  IsString, 
+  IsDateString, 
+  IsEnum, 
+  IsOptional, 
+  IsUUID,
+  ValidateNested 
+} from 'class-validator';
+import { Type } from 'class-transformer';
+import { Sexe } from '@prisma/client';
 
-export class RegisterCandidateStep2Dto {
-  @IsString({ message: 'Le mot de passe doit être une chaîne de caractères' })
-  @IsNotEmpty({ message: 'Mot de passe requis' })
-  password: string;
-
-  @IsEnum(Region, { message: 'Région invalide' })
-  @IsNotEmpty({ message: 'Région requise' })
-  region: Region;
-
+/**
+ * Sous-DTO contenant les données du candidat
+ */
+export class CandidateDataDto {
   @IsDateString({}, { message: 'Date de naissance invalide' })
   @IsNotEmpty({ message: 'Date de naissance requise' })
   dateNaissance: string;
 
-  @IsString({ message: 'Le lieu de naissance doit être une chaîne de caractères' })
+  @IsString({ message: 'Lieu de naissance invalide' })
   @IsNotEmpty({ message: 'Lieu de naissance requis' })
   lieuNaissance: string;
 
-  @IsString({ message: 'Le sexe doit être une chaîne de caractères' })
+  @IsEnum(Sexe, { message: 'Sexe invalide' })
   @IsNotEmpty({ message: 'Sexe requis' })
-  sexe: string;
+  sexe: Sexe;
 
-  @IsOptional()
-  @IsString()
-  ville?: string;
+  @IsString({ message: 'Nationalité invalide' })
+  @IsNotEmpty({ message: 'Nationalité requise' })
+  nationalite: string;
 
+  @IsString({ message: 'Ville invalide' })
+  @IsNotEmpty({ message: 'Ville requise' })
+  ville: string;
+
+  @IsString({ message: 'Nom du père invalide' })
   @IsOptional()
-  @IsString()
-  nationalite?: string;
+  nomPere?: string;
+
+  @IsString({ message: 'Téléphone du père invalide' })
+  @IsOptional()
+  telephonePere?: string;
+
+  @IsString({ message: 'Nom de la mère invalide' })
+  @IsOptional()
+  nomMere?: string;
+
+  @IsString({ message: 'Téléphone de la mère invalide' })
+  @IsOptional()
+  telephoneMere?: string;
+
+  @IsUUID('4', { message: 'Spécialité invalide' })
+  @IsNotEmpty({ message: 'Spécialité requise' })
+  specialiteId: string;
+}
+
+/**
+ * DTO principal pour l'inscription STEP 2
+ * Format accepté : { userId: "...", data: { dateNaissance, sexe, ... } }
+ */
+export class RegisterCandidateStep2Dto {
+  @IsUUID('4', { message: 'ID utilisateur invalide' })
+  @IsNotEmpty({ message: 'ID utilisateur requis' })
+  userId: string;
+
+  @ValidateNested()
+  @Type(() => CandidateDataDto)
+  @IsNotEmpty({ message: 'Données du candidat requises' })
+  data: CandidateDataDto;
 }

@@ -140,6 +140,7 @@ export class PaiementService {
     doc.moveDown();
 
     doc.fontSize(12).text(`Nom: ${recuData.paiement.nomComplet}`);
+    doc.fontSize(12).text(`Prenom: ${recuData.paiement.Prenom}`);
     doc.text(`Email: ${recuData.paiement.email}`);
     doc.text(`Téléphone: ${recuData.paiement.telephone}`);
     doc.text(`Concours: ${recuData.concours}`);
@@ -198,11 +199,29 @@ export class PaiementService {
       numeroRecu: recu.numeroRecu,
       paiement: {
         nomComplet: recu.paiement?.nomComplet ?? 'N/A',
+        prenom: recu.paiement?.prenom ?? 'N/A',
         email: recu.paiement?.email ?? 'N/A',
         telephone: recu.paiement?.telephone ?? 'N/A',
         concours: recu.paiement?.concours?.intitule ?? recu.concours,
         montant: recu.montant,
       },
     }
+  }
+   async getPaiementInfoByRecu(numeroRecu: string) {
+    const recu = await this.prisma.recu.findUnique({
+      where: { numeroRecu },
+      include: { paiement: { include: { concours: true } } },
+    });
+
+    if (!recu) throw new NotFoundException('Reçu introuvable');
+
+    return {
+      nom: recu.paiement?.nomComplet ?? '',
+      prenom: recu.paiement?.prenom ?? '',
+      email: recu.paiement?.email ?? '',
+      telephone: recu.paiement?.telephone ?? '',
+      concours: recu.paiement?.concours?.intitule ?? '',
+      montant: recu.montant,
+    };
   }
 }

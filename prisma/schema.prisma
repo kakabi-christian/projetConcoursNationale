@@ -51,6 +51,11 @@ enum TypeMention {
   EXCELLENT
   ASSEZ_BIEN
 }
+enum Sexe {
+  MASCULIN
+  FEMININ
+}
+
 
 
 model User {
@@ -69,11 +74,13 @@ model User {
   feedbacks       Feedback[]
   notifications   Notifications[]
   recus           Recu[]
-  admin           Admin?          // Relation inverse avec Admin
+  admin           Admin?        // ✔ pour les admins
+  candidate       Candidate?    // ✔ pour les candidats
 
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 }
+
 
 model Role {
   id              String          @id @default(uuid())
@@ -138,24 +145,27 @@ model Admin {
 
 model Candidate {
   id              String              @id @default(uuid())
+
+  // 🔑 CLÉ ÉTRANGÈRE VERS USER
+  userId          String              @unique
+  user            User                @relation(fields: [userId], references: [id])
+
   matricule       String?             @unique
   dateNaissance   DateTime?
   lieuNaissance   String?
-  sexe            String?
+  sexe            Sexe?
   nationalite     String?
   ville           String?
-  telephonePere String?
-  nomPere      String?
-  telephoneMere String?
-  nomMere   String?
-  region          Region?
-  
-  
+
+  telephonePere   String?
+  nomPere         String?
+  telephoneMere   String?
+  nomMere         String?
+
   // Relations
   enrollements    Enrollement[]
   paiements       Paiement[]
   documents       Documents?
-
   recus           Recu[]
   specialites     CandidatSpecialite[]
 
@@ -193,67 +203,87 @@ model Documents {
 }
 
 model Paiement {
-  id              String   @id @default(uuid())
-  montantTotal    Float?
-  datePaiement    DateTime @default(now())
-  
+  id                String      @id @default(uuid())
+  montantTotal      Float?
+  datePaiement      DateTime    @default(now())
+
   // Informations du formulaire de paiement (avant inscription)
-  nomComplet      String?  // Nom saisi lors du paiement
-  email           String?  // Email saisi lors du paiement
-  telephone       String?  // Téléphone saisi lors du paiement
-  
+  nomComplet        String?     // Nom saisi lors du paiement
+  prenom            String?     // Prénom saisi lors du paiement
+  email             String?     // Email saisi lors du paiement
+  telephone         String?     // Téléphone saisi lors du paiement
+
   // Informations de la transaction
-  modePaiement    String?  // "ORANGE_MONEY" ou "MTN_MOMO"
-  numeroTransaction String? // Ex: "MTN-2025-12345"
-  statut          String   @default("PENDING") // PENDING, SUCCESS, FAILED
-  
-  // Relation vers le concours sélectionné lors du paiement
-  concoursId      String?
-  concours        Concours? @relation(fields: [concoursId], references: [id])
-  
-  // Relations optionnelles (liées plus tard lors de l'inscription)
-  candidatId      String?
-  candidat        Candidate? @relation(fields: [candidatId], references: [id])
-  
-  enrollementId   String?    @unique
-  enrollement     Enrollement? @relation(fields: [enrollementId], references: [id])
-    recu            Recu?      // relation inverse (1:1)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  modePaiement      String?     // "ORANGE_MONEY" ou "MTN_MOMO"
+  numeroTransaction String?     // Ex: "MTN-2025-12345"
+  statut            String      @default("PENDING") // PENDING, SUCCESS, FAILED
+
+  // 🔹 Relation vers le concours sélectionné lors du paiement
+  concoursId        String?     
+  concours          Concours?   @relation(fields: [concoursId], references: [id])
+
+  // 🔹 Relations optionnelles (liées plus tard lors de l'inscription)
+  candidatId        String?
+  candidat          Candidate?  @relation(fields: [candidatId], references: [id])
+
+  // 🔹 Relation avec l'enrollement
+  enrollementId     String?     @unique
+  enrollement       Enrollement? @relation(fields: [enrollementId], references: [id])
+
+  // 🔹 Relation avec le reçu
+  recu              Recu?       // relation inverse (1:1)
+
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 }
+
 model Session {
   id        String    @id @default(uuid())
   nom       String
   dateDebut DateTime
   dateFin   DateTime
 
-  concours  Concours? @relation(fields: [concoursId], references: [id])
-  concoursId String?  // facultatif, car la Session peut exister sans Concours
+  // Relation 1:1 avec Concours (optionnelle)
+  concours  Concours? // pas besoin de fields/references ici
 
   enrollements Enrollement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+/*-- Retirer le sessionId d'éventuel autre concours
+UPDATE "Concours"
+SET "sessionId" = NULL
+WHERE "sessionId" = '7f0eb2b6-c06e-4207-9b76-a7e55b465edd';
 
+-- Mettre à jour ton concours
+UPDATE "Concours"
+SET "sessionId" = '7f0eb2b6-c06e-4207-9b76-a7e55b465edd'
+WHERE id = 'bc723a2a-b299-47e8-a007-6d69bbbdcf6d';
+
+*/
 model Concours {
-  id            String          @id @default(uuid())
-  code          String          @unique
-  intitule      String
-  montant       Float?
+  id        String    @id @default(uuid())
+  code      String    @unique
+  intitule  String
+  montant   Float?
 
-  anneeId       String?
-  annee         Annee?          @relation(fields: [anneeId], references: [id])
+  anneeId   String
+  annee     Annee?    @relation(fields: [anneeId], references: [id])
 
-  sessions      Session[]
+  // Relation 1:1 optionnelle avec Session
+  sessionId String?   @unique
+  session   Session?  @relation(fields: [sessionId], references: [id])
+
   enrollements  Enrollement[]
   paiements     Paiement[]
-  piecesDossier PieceDossier[]  @relation("ConcoursPieces") // Relation many-to-many
+  piecesDossier PieceDossier[]  @relation("ConcoursPieces")
 
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
+
+
 model Enrollement {
   id                      String              @id @default(uuid())
   candidatId              String
@@ -272,6 +302,8 @@ model Enrollement {
 
   centreExamenId          String? 
   centreExamen            CentreExamen?       @relation(fields: [centreExamenId], references: [id])
+  centreDepotId          String? 
+  centreDepot          CentreDepot?       @relation(fields: [centreDepotId], references: [id])
 
   createdAt               DateTime            @default(now())
   updatedAt               DateTime            @updatedAt
@@ -394,6 +426,8 @@ model CentreDepot {
   id              String          @id @default(uuid())
   intitule        String
   lieuDepot       String          @unique
+  enrollements    Enrollement[]
+
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 }

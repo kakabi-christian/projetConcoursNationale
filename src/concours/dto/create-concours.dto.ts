@@ -15,13 +15,12 @@ export class CreateConcoursDto {
   @IsOptional()
   anneeId?: string;  // année académique liée, facultatif
 
-  @IsArray()
-  @IsUUID("4", { each: true })
+  @IsUUID()
   @IsOptional()
-  sessionIds?: string[];  // IDs des sessions liées, facultatif
+  sessionId?: string;  // ID de la session liée, facultatif (relation 1:1)
 
   @IsArray()
   @IsUUID("4", { each: true })
   @IsOptional()
-  pieceDossierIds?: string[]; // <-- IDs des pièces de dossier à associer
+  pieceDossierIds?: string[]; // IDs des pièces de dossier à associer
 }

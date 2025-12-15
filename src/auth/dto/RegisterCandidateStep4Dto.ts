@@ -1,19 +1,17 @@
-import { IsOptional, IsString } from 'class-validator';
+// src/auth/dto/RegisterCandidateStep4Dto.ts
+import { IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class RegisterCandidateStep4Dto {
-  @IsOptional()
-  @IsString({ message: 'Nom du tuteur invalide' })
-  nomTuteur?: string;
+  @IsUUID()
+  candidateId: string; // ✅ L'ID du candidat, obligatoire
+
+  @IsUUID()
+  centreDepotId: string; // ✅ Le centre de dépôt choisi par le candidat
+
+  @IsUUID()
+  centreExamenId: string; // ✅ Le centre d'examen choisi par le candidat
 
   @IsOptional()
-  @IsString({ message: 'Téléphone du tuteur invalide' })
-  telephoneTuteur?: string;
-
-  @IsOptional()
-  @IsString({ message: 'Centre d\'examen invalide' })
-  centreExamenId?: string;
-
-  @IsOptional()
-  @IsString({ message: 'Spécialité invalide' })
-  specialiteId?: string;
+  @IsUUID()
+  sessionId?: string; // ⚡ Optionnel, récupérable automatiquement depuis le concours
 }
