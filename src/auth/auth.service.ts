@@ -94,153 +94,99 @@ export class AuthService {
   }
 
   // ==================== REGISTER CANDIDATE STEP 2 ====================
-  async registerCandidateStep2(dto: RegisterCandidateStep2Dto) {
-  // ✅ Extraire userId et data depuis le DTO
+async registerCandidateStep2(dto: RegisterCandidateStep2Dto) {
   const { userId, data } = dto;
 
   // Vérifier que l'utilisateur existe
-  const user = await this.prisma.user.findUnique({
-    where: { id: userId },
-  });
+  const user = await this.prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new NotFoundException('Utilisateur non trouvé');
 
   // Vérifier si un candidat existe déjà pour cet utilisateur
-  const existingCandidate = await this.prisma.candidate.findUnique({
-    where: { userId },
-  });
-
+  const existingCandidate = await this.prisma.candidate.findUnique({ where: { userId } });
   if (existingCandidate && existingCandidate.dateNaissance) {
     throw new BadRequestException('Informations déjà enregistrées');
   }
 
   // Vérifier que la spécialité existe
-  const specialite = await this.prisma.specialite.findUnique({
-    where: { id: data.specialiteId },
-  });
+  const specialite = await this.prisma.specialite.findUnique({ where: { id: data.specialiteId } });
   if (!specialite) throw new NotFoundException('Spécialité non trouvée');
 
-  // ✅ Créer ou mettre à jour le candidat
-  let candidate;
+  // 🔹 Transaction pour tout mettre à jour de manière sûre
+  const result = await this.prisma.$transaction(async (tx) => {
+    let candidate;
 
-  if (existingCandidate) {
-    // Mettre à jour le candidat existant
-    candidate = await this.prisma.candidate.update({
-      where: { userId },
-      data: {
-        dateNaissance: new Date(data.dateNaissance),
-        lieuNaissance: data.lieuNaissance,
-        sexe: data.sexe,
-        nationalite: data.nationalite,
-        ville: data.ville,
-        nomPere: data.nomPere || null,
-        telephonePere: data.telephonePere || null,
-        nomMere: data.nomMere || null,
-        telephoneMere: data.telephoneMere || null,
-      },
-    });
+    // Créer ou mettre à jour le candidat
+    if (existingCandidate) {
+      candidate = await tx.candidate.update({
+        where: { userId },
+        data: {
+          dateNaissance: new Date(data.dateNaissance),
+          lieuNaissance: data.lieuNaissance,
+          sexe: data.sexe,
+          nationalite: data.nationalite,
+          ville: data.ville,
+          nomPere: data.nomPere || null,
+          telephonePere: data.telephonePere || null,
+          nomMere: data.nomMere || null,
+          telephoneMere: data.telephoneMere || null,
+        },
+      });
 
-    // ✅ Créer la relation CandidatSpecialite (éviter les doublons)
-    await this.prisma.candidatSpecialite.upsert({
+      await tx.candidatSpecialite.upsert({
+        where: { 
+          candidatId_specialiteId: { 
+            candidatId: candidate.id, 
+            specialiteId: data.specialiteId 
+          } 
+        },
+        create: { candidatId: candidate.id, specialiteId: data.specialiteId },
+        update: {},
+      });
+    } else {
+      candidate = await tx.candidate.create({
+        data: {
+          userId,
+          dateNaissance: new Date(data.dateNaissance),
+          lieuNaissance: data.lieuNaissance,
+          sexe: data.sexe,
+          nationalite: data.nationalite,
+          ville: data.ville,
+          nomPere: data.nomPere || null,
+          telephonePere: data.telephonePere || null,
+          nomMere: data.nomMere || null,
+          telephoneMere: data.telephoneMere || null,
+          specialites: { create: { specialiteId: data.specialiteId } },
+        },
+        include: { specialites: { include: { specialite: true } } },
+      });
+    }
+
+    // Mettre à jour tous les reçus non liés à un candidat
+    await tx.recu.updateMany({
       where: {
-        candidatId_specialiteId: {
-          candidatId: candidate.id,
-          specialiteId: data.specialiteId,
-        },
+        AND: [{ candidatId: null }],
+        OR: [
+          { userId: user.id },
+          { telephone: user.telephone },
+        ],
       },
-      create: {
-        candidatId: candidate.id,
-        specialiteId: data.specialiteId,
-      },
-      update: {}, // Rien à mettre à jour si existe déjà
+      data: { candidatId: candidate.id, estUtilise: true },
     });
-  } else {
-    // Créer le candidat avec la spécialité
-    candidate = await this.prisma.candidate.create({
-      data: {
-        userId,
-        dateNaissance: new Date(data.dateNaissance),
-        lieuNaissance: data.lieuNaissance,
-        sexe: data.sexe,
-        nationalite: data.nationalite,
-        ville: data.ville,
-        nomPere: data.nomPere || null,
-        telephonePere: data.telephonePere || null,
-        nomMere: data.nomMere || null,
-        telephoneMere: data.telephoneMere || null,
-        specialites: {
-          create: {
-            specialiteId: data.specialiteId,
-          },
-        },
-      },
-      include: {
-        specialites: {
-          include: {
-            specialite: true,
-          },
-        },
-      },
-    });
-  }
 
-  // 🔥 MISE À JOUR DU REÇU ET DU PAIEMENT
-  // Trouver tous les reçus non liés à un candidatId
-  const receiptsToUpdate = await this.prisma.recu.findMany({
-    where: {
-      userId: userId,
-      candidatId: null, // Seulement ceux qui n'ont pas encore de candidatId
-    },
+    // Mettre à jour tous les paiements non liés à un candidat
+    await tx.paiement.updateMany({
+      where: { email: user.email, candidatId: null },
+      data: { candidatId: candidate.id },
+    });
+
+    // Retourner le candidat avec ses spécialités
+    return tx.candidate.findUnique({
+      where: { id: candidate.id },
+      include: { specialites: { include: { specialite: true } } },
+    });
   });
 
-  // Si des reçus existent, les mettre à jour
-  if (receiptsToUpdate.length > 0) {
-    await this.prisma.recu.updateMany({
-      where: {
-        id: { in: receiptsToUpdate.map(r => r.id) }, // On met à jour tous les reçus trouvés
-      },
-      data: {
-        candidatId: candidate.id,
-        estUtilise: true, // Marquer le reçu comme utilisé
-      },
-    });
-  }
-
-  // Trouver les paiements non associés à un candidatId
-  const paymentsToUpdate = await this.prisma.paiement.findMany({
-    where: {
-      email: user.email,
-      candidatId: null, // Seulement ceux qui n'ont pas encore de candidatId
-    },
-  });
-
-  // Si des paiements existent, les mettre à jour
-  if (paymentsToUpdate.length > 0) {
-    await this.prisma.paiement.updateMany({
-      where: {
-        id: { in: paymentsToUpdate.map(p => p.id) }, // On met à jour tous les paiements trouvés
-      },
-      data: {
-        candidatId: candidate.id,
-      },
-    });
-  }
-
-  // Récupérer le candidat avec ses spécialités
-  const candidateWithSpecialites = await this.prisma.candidate.findUnique({
-    where: { id: candidate.id },
-    include: {
-      specialites: {
-        include: {
-          specialite: true,
-        },
-      },
-    },
-  });
-
-  return {
-    message: 'Inscription étape 2 réussie',
-    candidate: candidateWithSpecialites,
-  };
+  return { message: 'Inscription étape 2 réussie', candidate: result };
 }
 
   // ==================== REGISTER CANDIDATE STEP 3 ====================
@@ -382,51 +328,121 @@ async registerCandidateStep4(candidateId: string, dto: RegisterCandidateStep4Dto
 
 
   // ==================== LOGIN ====================
-  async login(loginDto: LoginDto, userType: 'ADMIN' | 'CANDIDATE') {
-    const user = await this.prisma.user.findUnique({
-      where: { email: loginDto.email },
-      include: {
-        roles: {
-          include: {
-            role: { include: { permissions: { include: { permission: true } } } },
-          },
-        },
-        admin: { include: { departement: true } },
-      },
+// src/auth/auth.service.ts
+async login(
+  loginDto: LoginDto,
+  userType: 'ADMIN' | 'CANDIDATE',
+) {
+  console.log('=== LOGIN START ===');
+  console.log('UserType:', userType);
+  console.log('Login DTO:', loginDto);
+
+  // ===================== CANDIDATE LOGIN =====================
+  if (userType === 'CANDIDATE') {
+    const { email, numeroRecu } = loginDto;
+    console.log('Candidate login attempt with email:', email, 'and numeroRecu:', numeroRecu);
+
+    if (!email || !numeroRecu) {
+      throw new BadRequestException('Email et numéro de reçu requis');
+    }
+
+    // 🔹 Chercher le paiement correspondant à l'email avec statut SUCCESS
+    const paiement = await this.prisma.paiement.findFirst({
+      where: { email },
+      include: { candidat: { include: { user: true } }, recu: true },
     });
 
-    if (!user) throw new UnauthorizedException('Email ou mot de passe incorrect.');
-    if (user.userType !== userType) {
-      throw new UnauthorizedException(`Utilisateur n'est pas un ${userType.toLowerCase()}.`);
+    console.log('Paiement trouvé:', paiement);
+
+    // Vérifier si le numéro de reçu correspond
+    if (!paiement || paiement.recu?.numeroRecu !== numeroRecu) {
+      throw new UnauthorizedException('Paiement invalide ou reçu incorrect');
     }
 
-    if (userType === 'ADMIN') {
-      const isPasswordMatching = await bcrypt.compare(loginDto.password, user.password);
-      if (!isPasswordMatching) throw new UnauthorizedException('Mot de passe incorrect.');
+    if (!paiement.candidat) {
+      throw new UnauthorizedException('Veuillez compléter votre inscription');
     }
 
-    if (!user.isVerified) throw new UnauthorizedException('Compte non vérifié.');
+    const user = paiement.candidat.user;
+    if (!user) {
+      throw new UnauthorizedException('Aucun compte associé à ce paiement');
+    }
 
-    const permissions =
-      user.roles?.flatMap((userRole) =>
-        userRole.role.permissions.map((p) => p.permission.name),
-      ) || [];
+    if (user.email !== email) {
+      throw new UnauthorizedException('Email et reçu ne correspondent pas');
+    }
 
-    const payload: any = {
+    if (!user.isVerified) {
+      throw new UnauthorizedException('Compte non vérifié');
+    }
+
+    // Générer le JWT
+    const payload = {
       sub: user.id,
       email: user.email,
-      userType: user.userType,
-      permissions,
+      userType: 'CANDIDATE',
+      candidateId: paiement.candidat.id,
     };
-
-    if (userType === 'ADMIN' && user.admin?.departement) {
-      payload.departement = user.admin.departement.nomDep;
-    }
 
     const access_token = await this.jwtService.signAsync(payload);
 
-    return { access_token, permissions, user };
+    console.log('=== CANDIDATE LOGIN SUCCESS ===');
+    return { access_token, user };
   }
+
+  // ===================== ADMIN LOGIN =====================
+  const { email, password } = loginDto;
+  if (!email || !password) {
+    throw new BadRequestException('Email et mot de passe requis');
+  }
+
+  const user = await this.prisma.user.findUnique({
+    where: { email },
+    include: {
+      roles: {
+        include: {
+          role: {
+            include: { permissions: { include: { permission: true } } },
+          },
+        },
+      },
+      admin: true,
+    },
+  });
+
+  if (!user) {
+    throw new UnauthorizedException('Email incorrect');
+  }
+
+  if (user.userType !== 'ADMIN') {
+    throw new UnauthorizedException("Cet utilisateur n'est pas un admin");
+  }
+
+  const isValid = await bcrypt.compare(password, user.password ?? '');
+  if (!isValid) {
+    throw new UnauthorizedException('Mot de passe incorrect');
+  }
+
+  if (!user.isVerified) {
+    throw new UnauthorizedException('Compte non vérifié');
+  }
+
+  const permissions =
+    user.roles?.flatMap((ur) => ur.role.permissions.map((p) => p.permission.name)) || [];
+
+  const payload = {
+    sub: user.id,
+    email: user.email,
+    userType: 'ADMIN',
+    permissions,
+  };
+
+  const access_token = await this.jwtService.signAsync(payload);
+
+  console.log('=== ADMIN LOGIN SUCCESS ===');
+  return { access_token, user, permissions };
+}
+
 
 async getCandidateInfo(candidateId: string) {
   const candidate = await this.prisma.candidate.findUnique({

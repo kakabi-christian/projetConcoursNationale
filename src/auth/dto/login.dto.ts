@@ -1,10 +1,17 @@
-import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
+// src/auth/dto/login.dto.ts
+import { IsEmail, IsOptional, IsString, IsNotEmpty } from 'class-validator';
 
 export class LoginDto {
   @IsEmail()
   email: string;
 
-  @IsNotEmpty()
+  // 🔐 ADMIN uniquement
+  @IsOptional()
   @IsString()
-  password: string;
+  password?: string;
+
+  // 🧾 CANDIDATE uniquement
+  @IsOptional()
+  @IsString()
+  numeroRecu?: string;
 }

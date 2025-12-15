@@ -27,21 +27,22 @@ export class AuthController {
   }
 
   // ==================== LOGIN ====================
-  @Post('login')
-  @Public()
-  async login(
-    @Body() dto: LoginDto & { userType: 'ADMIN' | 'CANDIDATE' },
-  ) {
-    const { email, password, userType } = dto;
+ // ==================== LOGIN ====================
+@Post('login')
+@Public()
+async login(@Body() dto: LoginDto & { userType: 'ADMIN' | 'CANDIDATE' }) {
+  const { userType } = dto;
 
-    if (!userType) {
-      throw new BadRequestException(
-        'Le type d’utilisateur est requis (ADMIN ou CANDIDATE).',
-      );
-    }
-
-    return this.authService.login({ email, password }, userType);
+  if (!userType) {
+    throw new BadRequestException(
+      'Le type d’utilisateur est requis (ADMIN ou CANDIDATE).',
+    );
   }
+
+  // ✅ PASSER LE DTO COMPLET (email, password, numeroRecu)
+  return this.authService.login(dto, userType);
+}
+
 
   // ==================== REGISTER CANDIDATE STEP 1 ====================
   @Post('register-candidate-step1')
