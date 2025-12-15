@@ -71,17 +71,21 @@ export class AuthService {
 
   // ==================== REGISTER CANDIDATE STEP 1 ====================
   async registerCandidateStep1(dto: CreateUserStep1Dto) {
-    const { nom, prenom, email, telephone, region } = dto;
+    const { nom, prenom,password, email, telephone, region } = dto;
 
     // Vérifier que l'email n'existe pas déjà
     const existingUser = await this.prisma.user.findUnique({ where: { email } });
     if (existingUser) throw new ConflictException('Cet email existe déjà.');
+
+    const hashedPassword = await this.hashPassword(password);
+
 
     // Créer l'utilisateur sans lier le reçu (déjà validé à l'étape précédente)
     const user = await this.prisma.user.create({
       data: {
         nom,
         prenom,
+        password: hashedPassword,
         email,
         telephone,
         region,
@@ -338,57 +342,53 @@ async login(
   console.log('Login DTO:', loginDto);
 
   // ===================== CANDIDATE LOGIN =====================
-  if (userType === 'CANDIDATE') {
-    const { email, numeroRecu } = loginDto;
-    console.log('Candidate login attempt with email:', email, 'and numeroRecu:', numeroRecu);
+ if (userType === 'CANDIDATE') {
+  const { password, numeroRecu } = loginDto;
 
-    if (!email || !numeroRecu) {
-      throw new BadRequestException('Email et numéro de reçu requis');
-    }
-
-    // 🔹 Chercher le paiement correspondant à l'email avec statut SUCCESS
-    const paiement = await this.prisma.paiement.findFirst({
-      where: { email },
-      include: { candidat: { include: { user: true } }, recu: true },
-    });
-
-    console.log('Paiement trouvé:', paiement);
-
-    // Vérifier si le numéro de reçu correspond
-    if (!paiement || paiement.recu?.numeroRecu !== numeroRecu) {
-      throw new UnauthorizedException('Paiement invalide ou reçu incorrect');
-    }
-
-    if (!paiement.candidat) {
-      throw new UnauthorizedException('Veuillez compléter votre inscription');
-    }
-
-    const user = paiement.candidat.user;
-    if (!user) {
-      throw new UnauthorizedException('Aucun compte associé à ce paiement');
-    }
-
-    if (user.email !== email) {
-      throw new UnauthorizedException('Email et reçu ne correspondent pas');
-    }
-
-    if (!user.isVerified) {
-      throw new UnauthorizedException('Compte non vérifié');
-    }
-
-    // Générer le JWT
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      userType: 'CANDIDATE',
-      candidateId: paiement.candidat.id,
-    };
-
-    const access_token = await this.jwtService.signAsync(payload);
-
-    console.log('=== CANDIDATE LOGIN SUCCESS ===');
-    return { access_token, user };
+  if (!password || !numeroRecu) {
+    throw new BadRequestException('Numéro de reçu et mot de passe requis');
   }
+
+  // 🔹 Chercher le paiement correspondant au numéro de reçu via la relation 'recu'
+  const paiement = await this.prisma.paiement.findFirst({
+    where: { 
+      recu: { numeroRecu } // 🔹 filtrer via la relation
+    },
+    include: { 
+      candidat: { include: { user: true } }, // 🔹 inclure candidat et user
+      recu: true,
+    },
+  });
+
+  if (!paiement) {
+    throw new UnauthorizedException('Numéro de reçu invalide');
+  }
+
+  const user = paiement.candidat?.user;
+  if (!user) {
+    throw new UnauthorizedException('Aucun compte associé à ce paiement');
+  }
+
+  const isValidPassword = await bcrypt.compare(password, user.password ?? '');
+  if (!isValidPassword) {
+    throw new UnauthorizedException('Mot de passe incorrect');
+  }
+
+  if (!user.isVerified) {
+    throw new UnauthorizedException('Compte non vérifié');
+  }
+
+  const payload = {
+    sub: user.id,
+    userType: 'CANDIDATE',
+    candidateId: paiement.candidatId,
+  };
+
+  const access_token = await this.jwtService.signAsync(payload);
+
+  return { access_token, user };
+}
+
 
   // ===================== ADMIN LOGIN =====================
   const { email, password } = loginDto;

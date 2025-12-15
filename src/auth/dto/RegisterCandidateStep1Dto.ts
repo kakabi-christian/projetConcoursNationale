@@ -4,6 +4,7 @@ import {
   IsNotEmpty,
   IsString,
   IsEnum,
+  MinLength,
 } from 'class-validator';
 import { Region } from '@prisma/client';
 
@@ -19,6 +20,11 @@ export class CreateUserStep1Dto {
   @IsString({ message: 'Le prénom doit être une chaîne de caractères' })
   @IsNotEmpty({ message: 'Prénom requis' })
   prenom: string;
+  
+    @IsString({ message: 'Le mot de passe doit être une chaîne de caractères' })
+    @MinLength(6, { message: 'Le mot de passe doit contenir au moins 6 caractères' })
+    @IsNotEmpty({ message: 'Mot de passe requis' })
+    password: string;
 
   @IsEmail({}, { message: 'Email invalide' })
   @IsNotEmpty({ message: 'Email requis' })

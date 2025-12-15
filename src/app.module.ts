@@ -32,6 +32,7 @@ import { SpecialiteModule } from './specialite/specialite.module';
 import { CentreExamenModule } from './centre-examen/centre-examen.module';
 import { CentreDepotService } from './centre-depot/centre-depot.service';
 import { CentreDepotModule } from './centre-depot/centre-depot.module';
+import { StatistiqueModule } from './statistique/statistique.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { CentreDepotModule } from './centre-depot/centre-depot.module';
     SpecialiteModule,
     CentreExamenModule,
     CentreDepotModule,
+    StatistiqueModule,
   ],
   controllers: [AppController],
   providers: [
