@@ -24,7 +24,7 @@ export class SessionService {
   async findAll(page: number = 1, limit: number = 10, search?: string) {
     const skip = (page - 1) * limit;
 
-    // Filtre de recherche sur le nom de la session
+    // Filtre de recherche sur le nom de la sessions
     const where: Prisma.SessionWhereInput = search ? {
       nom: { contains: search, mode: 'insensitive' as const },
     } : {};
