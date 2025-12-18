@@ -185,4 +185,106 @@ export class StatistiqueService {
 
     return { sexe, specialites, filieres, paiements, mentions };
   }
+
+  // ===================== NOUVELLES STATISTIQUES (MISE À JOUR) =====================
+
+  /**
+   * Statistiques détaillées par Région (basé sur le champ région de l'utilisateur)
+   */
+  async candidatsParRegionDetaille() {
+    const data = await this.prisma.user.findMany({
+      where: { candidate: { isNot: null } },
+      select: {
+        region: true,
+        candidate: { select: { sexe: true } }
+      }
+    });
+
+    return data.reduce((acc, curr) => {
+      const reg = curr.region || 'NON_RENSEIGNEE';
+      if (!acc[reg]) acc[reg] = { total: 0, filles: 0, garcons: 0 };
+      
+      acc[reg].total += 1;
+      if (curr.candidate?.sexe === 'FEMININ') acc[reg].filles += 1;
+      else if (curr.candidate?.sexe === 'MASCULIN') acc[reg].garcons += 1;
+      
+      return acc;
+    }, {});
+  }
+
+  /**
+   * Analyse des tranches d'âge des candidats
+   */
+  async candidatsParTrancheAge() {
+    const candidates = await this.prisma.candidate.findMany({
+      select: { dateNaissance: true }
+    });
+
+    const categories = { '15-20': 0, '21-25': 0, '26-30': 0, '31+': 0, 'Inconnu': 0 };
+    const yearNow = new Date().getFullYear();
+
+    candidates.forEach(c => {
+      if (!c.dateNaissance) { categories['Inconnu']++; return; }
+      const age = yearNow - new Date(c.dateNaissance).getFullYear();
+      if (age <= 20) categories['15-20']++;
+      else if (age <= 25) categories['21-25']++;
+      else if (age <= 30) categories['26-30']++;
+      else categories['31+']++;
+    });
+
+    return categories;
+  }
+
+  /**
+   * Taux d'occupation et répartition par Centre d'Examen
+   */
+  async statsParCentreExamen() {
+    const centres = await this.prisma.centreExamen.findMany({
+      include: { 
+        enrollements: {
+          select: { candidat: { select: { sexe: true } } }
+        } 
+      }
+    });
+
+    return centres.map(c => ({
+      centre: c.intitule,
+      total: c.enrollements.length,
+      filles: c.enrollements.filter(e => e.candidat?.sexe === 'FEMININ').length,
+      garcons: c.enrollements.filter(e => e.candidat?.sexe === 'MASCULIN').length
+    }));
+  }
+
+  /**
+   * Statistiques de réception des dossiers par Centre de Dépôt
+   */
+  async statsParCentreDepot() {
+    const depots = await this.prisma.centreDepot.findMany({
+      include: { 
+        _count: { select: { enrollements: true } } 
+      }
+    });
+
+    return depots.map(d => ({
+      nom: d.intitule,
+      lieu: d.lieuDepot,
+      nbDossiers: d._count.enrollements
+    }));
+  }
+
+  /**
+   * Taux de conversion : Inscrits vs Payés (SUCCESS)
+   */
+  async tauxConversionPaiement() {
+    const totalCandidats = await this.prisma.candidate.count();
+    const paiementsReussis = await this.prisma.paiement.count({
+      where: { statut: 'SUCCESS' }
+    });
+
+    return {
+      totalCandidats,
+      paiementsReussis,
+      tauxConversion: totalCandidats > 0 ? ((paiementsReussis / totalCandidats) * 100).toFixed(2) + '%' : '0%'
+    };
+  }
 }

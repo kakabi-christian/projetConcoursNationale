@@ -1,4 +1,3 @@
-// src/specialite/specialite.controller.ts
 import {
   Body,
   Controller,
@@ -8,6 +7,7 @@ import {
   Patch,
   Post,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { SpecialiteService } from './specialite.service';
 import { CreateSpecialiteDto } from './dto/create-specialite.dto';
@@ -28,17 +28,30 @@ export class SpecialiteController {
     return this.service.create(dto);
   }
 
+  // --- VERSION AVEC PAGINATION ET RECHERCHE ---
   @Get()
   @Public()
-  findAll() {
-    return this.service.findAll();
+  findAll(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const p = page ? parseInt(page, 10) : 1;
+    const l = limit ? parseInt(limit, 10) : 10;
+    return this.service.findAll(p, l, search);
   }
 
-  // ✅ NOUVELLE ROUTE : spécialités par filière
+  // ✅ NOUVELLE ROUTE : spécialités par filière (également paginée)
   @Get('filiere/:filiereId')
   @Public()
-  findByFiliere(@Param('filiereId') filiereId: string) {
-    return this.service.findByFiliere(filiereId);
+  findByFiliere(
+    @Param('filiereId') filiereId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const p = page ? parseInt(page, 10) : 1;
+    const l = limit ? parseInt(limit, 10) : 10;
+    return this.service.findByFiliere(filiereId, p, l);
   }
 
   @Get(':id')

@@ -1,8 +1,10 @@
 import { Controller, Get } from '@nestjs/common';
 import { StatistiqueService } from './statistique.service';
 import { Public } from 'src/auth/decorators/public.decorator';
+import { Roles } from 'src/auth/decorators/roles.decorator';
 
 @Controller('statistique')
+@Roles('ADMIN')
 export class StatistiqueController {
   constructor(private readonly statistiqueService: StatistiqueService) {}
 
@@ -126,5 +128,36 @@ export class StatistiqueController {
   @Public()
   async statistiquesTableauDeBord() {
     return this.statistiqueService.statistiquesTableauDeBord();
+  }
+  // ===================== NOUVELLES ROUTES DE STATISTIQUES =====================
+
+  @Get('regions-detaillees')
+  @Public()
+  async candidatsParRegionDetaille() {
+    return this.statistiqueService.candidatsParRegionDetaille();
+  }
+
+  @Get('tranches-age')
+  @Public()
+  async candidatsParTrancheAge() {
+    return this.statistiqueService.candidatsParTrancheAge();
+  }
+
+  @Get('stats-centres-examen')
+  @Public()
+  async statsParCentreExamen() {
+    return this.statistiqueService.statsParCentreExamen();
+  }
+
+  @Get('stats-centres-depot')
+  @Public()
+  async statsParCentreDepot() {
+    return this.statistiqueService.statsParCentreDepot();
+  }
+
+  @Get('taux-conversion')
+  @Public()
+  async tauxConversionPaiement() {
+    return this.statistiqueService.tauxConversionPaiement();
   }
 }

@@ -251,17 +251,7 @@ model Session {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
-/*-- Retirer le sessionId d'éventuel autre concours
-UPDATE "Concours"
-SET "sessionId" = NULL
-WHERE "sessionId" = '7f0eb2b6-c06e-4207-9b76-a7e55b465edd';
 
--- Mettre à jour ton concours
-UPDATE "Concours"
-SET "sessionId" = '7f0eb2b6-c06e-4207-9b76-a7e55b465edd'
-WHERE id = 'bc723a2a-b299-47e8-a007-6d69bbbdcf6d';
-
-*/
 model Concours {
   id        String    @id @default(uuid())
   code      String    @unique

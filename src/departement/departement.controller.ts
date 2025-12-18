@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards, Query } from '@nestjs/common';
 import { DepartementService } from './departement.service';
 import { CreateDepartementDto } from './dto/create-departement.dto';
 import { UpdateDepartementDto } from './dto/update-departement.dto';
@@ -19,13 +19,18 @@ export class DepartementController {
   }
 
   @Get()
-  @Public() // <-- rendu public
-  findAll() {
-    return this.departementService.findAll();
+  @Public() // Accessible sans jeton JWT
+  findAll(
+    @Query('page') page: string = '1', 
+    @Query('limit') limit: string = '10',
+    @Query('search') search?: string
+  ) {
+    // On utilise le "+" pour transformer les chaînes en nombres (ex: "1" -> 1)
+    return this.departementService.findAll(+page, +limit, search);
   }
 
   @Get(':id')
-  @Public() // <-- rendu public
+  @Public()
   findOne(@Param('id') id: string) {
     return this.departementService.findOne(id);
   }

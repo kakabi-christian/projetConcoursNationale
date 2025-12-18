@@ -33,6 +33,7 @@ import { CentreExamenModule } from './centre-examen/centre-examen.module';
 import { CentreDepotService } from './centre-depot/centre-depot.service';
 import { CentreDepotModule } from './centre-depot/centre-depot.module';
 import { StatistiqueModule } from './statistique/statistique.module';
+import { CandidatesModule } from './candidates/candidates.module';
 
 @Module({
   imports: [
@@ -74,6 +75,7 @@ import { StatistiqueModule } from './statistique/statistique.module';
     CentreExamenModule,
     CentreDepotModule,
     StatistiqueModule,
+    CandidatesModule,
   ],
   controllers: [AppController],
   providers: [

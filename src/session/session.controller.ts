@@ -1,10 +1,21 @@
-import { Controller, Get, Post, Body, Param, Patch, Delete, UseGuards } from '@nestjs/common';
+import { 
+  Controller, 
+  Get, 
+  Post, 
+  Body, 
+  Param, 
+  Patch, 
+  Delete, 
+  UseGuards, 
+  Query 
+} from '@nestjs/common';
 import { SessionService } from './session.service';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { UpdateSessionDto } from './dto/update-session.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/auth/guards/permissions.guard';
 import { Permissions } from 'src/auth/decorators/permissions.decorator';
+import { Public } from 'src/auth/decorators/public.decorator';
 
 @Controller('sessions')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -17,14 +28,22 @@ export class SessionController {
     return this.sessionService.create(createSessionDto);
   }
 
+  // --- VERSION MISE À JOUR AVEC PAGINATION ---
   @Get()
-  @Permissions('voir_sessions')
-  findAll() {
-    return this.sessionService.findAll();
+  @Public() // Rendu public pour permettre la sélection au front sans être forcément admin
+  findAll(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const p = page ? parseInt(page, 10) : 1;
+    const l = limit ? parseInt(limit, 10) : 10;
+    
+    return this.sessionService.findAll(p, l, search);
   }
 
   @Get(':id')
-  @Permissions('voir_session')
+  @Public()
   findOne(@Param('id') id: string) {
     return this.sessionService.findOne(id);
   }

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateConcoursDto } from './dto/create-concours.dto';
 import { UpdateConcoursDto } from './dto/update-concours.dto';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class ConcoursService {
@@ -13,30 +14,64 @@ export class ConcoursService {
     return this.prisma.concours.create({
       data: {
         ...rest,
-        // Lier l'année si fournie
         annee: anneeId ? { connect: { id: anneeId } } : undefined,
-        // Lier la session si fournie
         session: sessionId ? { connect: { id: sessionId } } : undefined,
-        // Lier les pièces de dossier si fournies
         piecesDossier: pieceDossierIds?.length
           ? { connect: pieceDossierIds.map((id) => ({ id })) }
           : undefined,
       },
-      include: { session: true, piecesDossier: true },
+      include: { session: true, piecesDossier: true, annee: true },
     });
   }
 
-  async findAll() {
-    return this.prisma.concours.findMany({
-      include: { session: true, piecesDossier: true },
-      orderBy: { createdAt: 'desc' },
-    });
+  // --- VERSION MISE À JOUR AVEC PAGINATION ET RECHERCHE ---
+  async findAll(page: number = 1, limit: number = 10, search?: string) {
+    const skip = (page - 1) * limit;
+
+    // Filtre de recherche sur le code ou l'intitule
+    const where: Prisma.ConcoursWhereInput = search ? {
+      OR: [
+        { code: { contains: search, mode: 'insensitive' as const } },
+        { intitule: { contains: search, mode: 'insensitive' as const } },
+      ],
+    } : {};
+
+    const [total, data] = await Promise.all([
+      this.prisma.concours.count({ where }),
+      this.prisma.concours.findMany({
+        where,
+        skip,
+        take: limit,
+        include: { 
+          session: true, 
+          piecesDossier: true, 
+          annee: true,
+          _count: {
+            select: { enrollements: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const lastPage = Math.ceil(total / limit);
+
+    return {
+      data,
+      pagination: {
+        total,
+        page,
+        lastPage,
+        hasNextPage: page < lastPage,
+        hasPreviousPage: page > 1,
+      },
+    };
   }
 
   async findOne(id: string) {
     const concours = await this.prisma.concours.findUnique({
       where: { id },
-      include: { session: true, piecesDossier: true },
+      include: { session: true, piecesDossier: true, annee: true },
     });
     if (!concours) throw new NotFoundException('Concours non trouvé');
     return concours;
@@ -53,10 +88,10 @@ export class ConcoursService {
         annee: anneeId ? { connect: { id: anneeId } } : undefined,
         session: sessionId ? { connect: { id: sessionId } } : undefined,
         piecesDossier: pieceDossierIds?.length
-          ? { set: pieceDossierIds.map((id) => ({ id })) } // remplace les anciennes
+          ? { set: pieceDossierIds.map((id) => ({ id })) } 
           : undefined,
       },
-      include: { session: true, piecesDossier: true },
+      include: { session: true, piecesDossier: true, annee: true },
     });
   }
 
