@@ -1,13 +1,29 @@
 // src/archive/dto/create-archive.dto.ts
-import { IsString } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsNotEmpty } from 'class-validator';
 
 export class CreateArchiveDto {
+  @ApiProperty({
+    description: "L'identifiant unique de l'épreuve associée",
+    example: '507f1f17b218250000000001',
+  })
   @IsString()
-  epreuveId: string; // ID de l'épreuve
+  @IsNotEmpty()
+  epreuveId: string;
 
+  @ApiProperty({
+    description: "L'identifiant de l'année scolaire correspondante",
+    example: '507f1f17b218250000000002',
+  })
   @IsString()
-  anneeId: string; // ID de l'année scolaire
+  @IsNotEmpty()
+  anneeId: string;
 
+  @ApiProperty({
+    description: "URL ou chemin d'accès vers le fichier stocké (PDF ou Image)",
+    example: 'https://mon-stockage.com/archives/epreuve-maths.pdf',
+  })
   @IsString()
-  fileUrl: string; // URL ou chemin du fichier (photo ou PDF)
+  @IsNotEmpty()
+  fileUrl: string;
 }

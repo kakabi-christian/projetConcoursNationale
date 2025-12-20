@@ -7,6 +7,7 @@ import {
   Patch,
   Delete,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { EpreuveService } from './epreuve.service';
 import { CreateEpreuveDto } from './dto/create-epreuve.dto';
@@ -27,10 +28,27 @@ export class EpreuveController {
     return this.epreuveService.create(createEpreuveDto);
   }
 
+  /**
+   * Récupère toutes les épreuves avec pagination et filtres
+   * @Query page : numéro de la page (défaut 1)
+   * @Query limit : nombre d'éléments par page (défaut 10)
+   * @Query search : recherche par nom d'épreuve
+   * @Query filiereId : filtre par filière spécifique
+   */
   @Get()
   @Public()
-  findAll() {
-    return this.epreuveService.findAll();
+  findAll(
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10',
+    @Query('search') search?: string,
+    @Query('filiereId') filiereId?: string,
+  ) {
+    return this.epreuveService.findAll({
+      page: Number(page),
+      limit: Number(limit),
+      search,
+      filiereId,
+    });
   }
 
   @Get(':id')
@@ -51,7 +69,7 @@ export class EpreuveController {
     return this.epreuveService.remove(id);
   }
 
-  // 🔹 NOUVELLE ROUTE : épreuves par spécialité
+  // 🔹 Épreuves par spécialité
   @Get('specialite/:specialiteId')
   @Public()
   findBySpecialite(@Param('specialiteId') specialiteId: string) {

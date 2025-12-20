@@ -7,6 +7,7 @@ import {
   Patch,
   Delete,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { NiveauService } from './niveau.service';
 import { CreateNiveauDto } from './dto/create-niveau.dto';
@@ -27,10 +28,22 @@ export class NiveauController {
     return this.niveauService.create(createNiveauDto);
   }
 
+  /**
+   * Récupère tous les niveaux avec pagination et recherche
+   * Paramètres acceptés : ?page=1&limit=10&search=licence
+   */
   @Get()
   @Public()
-  findAll() {
-    return this.niveauService.findAll();
+  findAll(
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10',
+    @Query('search') search?: string,
+  ) {
+    return this.niveauService.findAll({
+      page: Number(page),
+      limit: Number(limit),
+      search,
+    });
   }
 
   @Get(':id')

@@ -13,10 +13,56 @@ export class EpreuveService {
     });
   }
 
-  async findAll() {
-    return this.prisma.epreuve.findMany({
-      include: { filiere: true, specialite: true, niveau: true, archives: true },
-    });
+  /**
+   * Récupère les épreuves avec pagination et recherche
+   */
+  async findAll(query: { page: number; limit: number; search?: string; filiereId?: string }) {
+    const { page, limit, search, filiereId } = query;
+    const skip = (page - 1) * limit;
+
+    // Construction dynamique du filtre WHERE
+    const where: any = {};
+    
+    if (search) {
+      where.nomEpreuve = {
+        contains: search,
+        mode: 'insensitive', // Recherche insensible à la casse
+      };
+    }
+
+    if (filiereId) {
+      where.filiereId = filiereId;
+    }
+
+    // Exécution parallèle pour plus de rapidité
+    const [data, total] = await Promise.all([
+      this.prisma.epreuve.findMany({
+        where,
+        skip,
+        take: limit,
+        include: { 
+          filiere: true, 
+          specialite: true, 
+          niveau: true, 
+          _count: { select: { archives: true } } // Compte le nombre d'archives sans tout charger
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.epreuve.count({ where }),
+    ]);
+
+    const lastPage = Math.ceil(total / limit);
+
+    return {
+      data,
+      pagination: {
+        total,
+        page,
+        lastPage,
+        hasNextPage: page < lastPage,
+        hasPreviousPage: page > 1,
+      },
+    };
   }
 
   async findOne(id: string) {
@@ -41,9 +87,7 @@ export class EpreuveService {
     });
   }
 
-  // 🔹 Récupérer toutes les épreuves d'une spécialité avec leurs relations
   async findBySpecialite(specialiteId: string) {
-    // Vérifier que la spécialité existe
     const specialite = await this.prisma.specialite.findUnique({
       where: { id: specialiteId },
     });

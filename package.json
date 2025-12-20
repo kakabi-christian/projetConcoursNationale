@@ -28,7 +28,7 @@
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.1.9",
     "@nestjs/serve-static": "^5.0.4",
-    "@nestjs/swagger": "^11.2.1",
+    "@nestjs/swagger": "^11.2.3",
     "@prisma/client": "^6.19.0",
     "bcrypt": "^6.0.0",
     "bootstrap": "^5.3.8",
@@ -45,6 +45,7 @@
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "swagger-ui-express": "^5.0.1",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

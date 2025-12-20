@@ -1,12 +1,30 @@
 import { Controller, Get, Query } from '@nestjs/common';
+import { 
+  ApiTags, 
+  ApiOperation, 
+  ApiQuery, 
+  ApiResponse 
+} from '@nestjs/swagger'; // Imports Swagger
 import { CandidatesService } from './candidates.service';
 import { Public } from 'src/auth/decorators/public.decorator';
+
+@ApiTags('Gestion des Candidats')
 @Controller('candidates')
 export class CandidatesController {
   constructor(private readonly candidatesService: CandidatesService) {}
 
   @Get('list-detailed')
   @Public()
+  @ApiOperation({ summary: 'Récupérer une liste détaillée et formatée des candidats' })
+  @ApiQuery({ name: 'search', required: false, type: String, description: 'Recherche par nom, prénom ou matricule' })
+  @ApiQuery({ name: 'filiereId', required: false, type: String, description: 'Filtrer par ID de filière' })
+  @ApiQuery({ name: 'sexe', required: false, enum: ['MASCULIN', 'FEMININ'], description: 'Filtrer par sexe' })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Liste retournée avec succès (Formatée pour DataTables/Frontend).' 
+  })
   async getDetailedList(
     @Query('search') search?: string,
     @Query('filiereId') filiereId?: string,
