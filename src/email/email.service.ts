@@ -103,6 +103,42 @@ export class EmailService {
       this.logger.error(`Error in resendVerificationEmail: ${error.message}`);
     }
   }
+  // backend/src/email/email.service.ts
+
+async sendAdminCredentials(to: string, nom: string, codeAdmin: string, password: string) {
+  try {
+    const subject = '🚀 Vos identifiants de connexion Administrateur';
+    const html = `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
+        <div style="background-color: #007bff; color: white; padding: 20px; text-align: center;">
+          <h1>Bienvenue dans l'équipe !</h1>
+        </div>
+        <div style="padding: 20px; color: #333;">
+          <p>Bonjour <strong>${nom}</strong>,</p>
+          <p>Votre compte administrateur a été créé avec succès. Voici vos accès confidentiels :</p>
+          
+          <div style="background-color: #f4f7f6; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 5px solid #007bff;">
+            <p style="margin: 5px 0;"><strong>Identifiant (Email) :</strong> ${to}</p>
+            <p style="margin: 5px 0;"><strong>Code Admin :</strong> <span style="color: #007bff; font-weight: bold;">${codeAdmin}</span></p>
+            <p style="margin: 5px 0;"><strong>Mot de passe :</strong> ${password}</p>
+          </div>
+
+          <p style="color: #666; font-size: 0.9em;">⚠️ Par mesure de sécurité, nous vous conseillons de modifier votre mot de passe dès votre première connexion.</p>
+          
+          <div style="text-align: center; margin-top: 30px;">
+            <a href="${this.configService.get('FRONTEND_URL') || '#'}" style="background-color: #007bff; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">Se connecter au Dashboard</a>
+          </div>
+        </div>
+        <div style="background-color: #f9f9f9; color: #999; padding: 15px; text-align: center; font-size: 12px;">
+          Ceci est un message automatique, merci de ne pas y répondre.
+        </div>
+      </div>
+    `;
+    await this.sendMail(to, subject, html);
+  } catch (error) {
+    this.logger.error(`Erreur lors de l'envoi des identifiants admin: ${error.message}`);
+  }
+}
 
   async sendResetPasswordEmail(to: string, resetToken: string) {
     try {

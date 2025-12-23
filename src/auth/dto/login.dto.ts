@@ -1,15 +1,14 @@
-// src/auth/dto/login.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsOptional, IsString, IsNotEmpty } from 'class-validator';
+import { IsOptional, IsString, IsNotEmpty } from 'class-validator';
 
 export class LoginDto {
   @ApiProperty({
-    description: "L'adresse email de l'utilisateur (Admin ou Candidat)",
-    example: 'admin@domaine.com',
+    description: "Le code matricule de l'administrateur (ex: ADMIN-2025-XXXX)",
+    example: 'ADMIN-2025-A1B2',
   })
-  @IsEmail({}, { message: 'Email invalide' })
-  @IsNotEmpty()
-  email: string;
+  @IsString({ message: 'Le code admin doit être une chaîne de caractères' })
+  @IsOptional() // Optionnel car le candidat peut utiliser son reçu à la place
+  codeAdmin?: string;
 
   @ApiPropertyOptional({
     description: '🔐 Mot de passe (Requis pour les ADMINS uniquement)',

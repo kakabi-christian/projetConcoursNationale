@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common'; // Query ajouté ici
 import { PermissionService } from './permission.service';
 import { CreatePermissionDto } from './dto/create-permission.dto';
 import { UpdatePermissionDto } from './dto/update-permission.dto';
@@ -12,9 +12,18 @@ export class PermissionController {
     return this.permissionService.create(dto);
   }
 
+  // --- VERSION MISE À JOUR AVEC PAGINATION ---
   @Get()
-  findAll() {
-    return this.permissionService.findAll();
+  findAll(
+    @Query('page') page?: string, 
+    @Query('limit') limit?: string
+  ) {
+    // On convertit les strings en nombres avec le "+"
+    // On définit des valeurs par défaut (1 et 10) au cas où elles sont absentes
+    const pageNumber = page ? +page : 1;
+    const limitNumber = limit ? +limit : 10;
+    
+    return this.permissionService.findAll(pageNumber, limitNumber);
   }
 
   @Get(':id')

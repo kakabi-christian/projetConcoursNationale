@@ -12,13 +12,12 @@ import {
 import { NiveauService } from './niveau.service';
 import { CreateNiveauDto } from './dto/create-niveau.dto';
 import { UpdateNiveauDto } from './dto/update-niveau.dto';
-import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/auth/guards/permissions.guard';
 import { Permissions } from 'src/auth/decorators/permissions.decorator';
 import { Public } from 'src/auth/decorators/public.decorator';
 
 @Controller('niveaux')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards( PermissionsGuard)
 export class NiveauController {
   constructor(private readonly niveauService: NiveauService) {}
 

@@ -1,3 +1,4 @@
+// auth/guards/permissions.guard.ts
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
@@ -19,14 +20,16 @@ export class PermissionsGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
-    if (!user || !user.roles) {
-      throw new ForbiddenException('Permissions manquantes.');
+    if (!user) {
+      throw new ForbiddenException('Utilisateur non authentifié.');
     }
 
-    // Extraire toutes les permissions depuis les rôles
-    const userPermissions = user.roles.flatMap((r: any) =>
-      r.role.permissions.map((p: any) => p.permission.name)
-    );
+    // Les permissions sont directement dans user.permissions (tableau de strings)
+    const userPermissions = user.permissions || [];
+
+    if (!Array.isArray(userPermissions) || userPermissions.length === 0) {
+      throw new ForbiddenException('Aucune permission trouvée.');
+    }
 
     const hasPermission = requiredPermissions.every((perm) =>
       userPermissions.includes(perm),

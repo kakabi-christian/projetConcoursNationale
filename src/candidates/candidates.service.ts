@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 
@@ -8,6 +8,53 @@ export class CandidatesService {
 
   constructor(private prisma: PrismaService) {}
 
+  // --- NOUVELLE MÉTHODE : RÉCUPÉRER LE NOM DU CONCOURS ---
+  async getDashboardConcoursName(userId: string) {
+    this.logger.log(`🔍 Récupération du nom du concours pour userId: ${userId}`);
+    
+    const enrollment = await this.prisma.enrollement.findFirst({
+      where: { candidat: { userId: userId } },
+      select: {
+        concours: {
+          select: { intitule: true }
+        }
+      }
+    });
+
+    if (!enrollment) {
+      throw new NotFoundException("Aucune inscription trouvée pour ce candidat.");
+    }
+
+    return { intitule: enrollment.concours.intitule };
+  }
+
+  // --- NOUVELLE MÉTHODE : RÉCUPÉRER LA DATE DU COMPTE À REBOURS ---
+  async getDashboardCountdown(userId: string) {
+    this.logger.log(`⏳ Récupération de la date de session pour userId: ${userId}`);
+    
+    // On cherche l'enrollement, puis on remonte : Enrollement -> Concours -> Session
+    const enrollment = await this.prisma.enrollement.findFirst({
+      where: { candidat: { userId: userId } },
+      include: {
+        concours: {
+          include: {
+            session: true // La date se trouve ici
+          }
+        }
+      }
+    });
+
+    if (!enrollment || !enrollment.concours?.session) {
+      this.logger.error(`❌ Session introuvable pour le concours lié au candidat ${userId}`);
+      throw new NotFoundException("Date du concours (session) non définie.");
+    }
+
+    return {
+      dateTarget: enrollment.concours.session.dateDebut,
+    };
+  }
+
+  // --- TA MÉTHODE EXISTANTE (findAllDetailed) ---
   async findAllDetailed(query: { 
     search?: string, 
     filiereId?: string, 
@@ -15,15 +62,11 @@ export class CandidatesService {
     page?: number,
     limit?: number 
   }) {
+    // ... (Le reste de ton code reste inchangé)
     this.logger.log('📥 findAllDetailed() called');
-    this.logger.debug(`Query reçu: ${JSON.stringify(query)}`);
-
     const { search, filiereId, sexe, page = 1, limit = 10 } = query;
-
     const take = Number(limit);
     const skip = (Number(page) - 1) * take;
-
-    this.logger.log(`📄 Pagination → page=${page}, limit=${take}, skip=${skip}`);
 
     const where: Prisma.CandidateWhereInput = {
       AND: [
@@ -35,9 +78,7 @@ export class CandidatesService {
             { matricule: { contains: search, mode: 'insensitive' } },
           ],
         } : {},
-
         sexe ? { sexe } : {},
-
         filiereId ? {
           specialites: {
             some: {
@@ -50,11 +91,7 @@ export class CandidatesService {
       ]
     };
 
-    this.logger.debug(`🧩 Filtre Prisma construit: ${JSON.stringify(where)}`);
-
     try {
-      this.logger.log('🚀 Exécution des requêtes Prisma');
-
       const [candidates, total] = await Promise.all([
         this.prisma.candidate.findMany({
           where,
@@ -93,15 +130,10 @@ export class CandidatesService {
           skip,
           take,
         }),
-
         this.prisma.candidate.count({ where })
       ]);
 
-      this.logger.log(`✅ Requêtes terminées`);
-      this.logger.log(`📊 Total candidats trouvés: ${total}`);
-      this.logger.debug(`📦 Nombre de candidats retournés: ${candidates.length}`);
-
-      const result = {
+      return {
         data: candidates,
         meta: {
           total,
@@ -111,10 +143,6 @@ export class CandidatesService {
           hasPreviousPage: page > 1
         }
       };
-
-      this.logger.debug(`📤 Réponse finale prête`);
-      return result;
-
     } catch (error) {
       this.logger.error('❌ Erreur lors de la récupération des candidats', error);
       throw error;

@@ -34,6 +34,7 @@ import { CentreDepotService } from './centre-depot/centre-depot.service';
 import { CentreDepotModule } from './centre-depot/centre-depot.module';
 import { StatistiqueModule } from './statistique/statistique.module';
 import { CandidatesModule } from './candidates/candidates.module';
+import { FeebacksModule } from './feebacks/feebacks.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { CandidatesModule } from './candidates/candidates.module';
     CentreDepotModule,
     StatistiqueModule,
     CandidatesModule,
+    FeebacksModule,
   ],
   controllers: [AppController],
   providers: [

@@ -17,9 +17,9 @@ import { RegisterCandidateStep2Dto } from './dto/RegisterCandidateStep2Dto';
 import { RegisterCandidateStep3Dto } from './dto/RegisterCandidateStep3Dto';
 import { RegisterCandidateStep4Dto } from './dto/RegisterCandidateStep4Dto';
 
-
 @Injectable()
 export class AuthService {
+  logger: any;
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
@@ -27,76 +27,160 @@ export class AuthService {
   ) {}
 
   // Hash du mot de passe
+// Hash du mot de passe
   private async hashPassword(password: string): Promise<string> {
     return bcrypt.hash(password, 10);
   }
 
+  // Générateur rapide : ADMIN-2025-XXXX
+  private genCode = () => `ADMIN-${new Date().getFullYear()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+
   // ==================== REGISTER ADMIN ====================
-  async registerAdmin(dto: RegisterAdminDto) {
-    const { email, password, nom, prenom, telephone, region, departementId, roleId } = dto;
+// src/auth/auth.service.ts
 
-    const existingUser = await this.prisma.user.findUnique({ where: { email } });
-    if (existingUser) throw new ConflictException('Cet email existe déjà.');
+// src/auth/auth.service.ts
 
-    const hashedPassword = await this.hashPassword(password);
+async registerAdmin(dto: RegisterAdminDto) {
+  const { email, password, nom, prenom, telephone, region, departementId, roleId, userType } = dto;
 
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        nom,
-        prenom,
-        telephone,
-        region,
-        userType: 'ADMIN',
-        isVerified: true,
-      },
-    });
+  // 1. Vérification si l'utilisateur existe déjà
+  const existingUser = await this.prisma.user.findUnique({ where: { email } });
+  if (existingUser) throw new ConflictException('Cet email existe déjà.');
 
-    const admin = await this.prisma.admin.create({
-      data: {
-        userId: user.id,
-        departementId,
-      },
-    });
+  // On génère le hash pour la base de données
+  const hashedPassword = await this.hashPassword(password);
+  // On génère le code admin unique (ex: ADM-2025-XXXX)
+  const adminCode = this.genCode();
 
-    if (roleId) {
-      await this.prisma.userRole.create({
-        data: { userId: user.id, roleId },
+  try {
+    // 2. Transaction sécurisée pour créer l'utilisateur et son profil admin
+    const result = await this.prisma.$transaction(async (tx) => {
+      return await tx.user.create({
+        data: {
+          email,
+          password: hashedPassword, // On stocke le mot de passe haché
+          nom,
+          prenom,
+          telephone,
+          region,
+          userType: userType || 'ADMIN',
+          isVerified: true,
+          admin: {
+            create: {
+              codeAdmin: adminCode,
+              ...(departementId && departementId.trim() !== "" 
+                ? { departement: { connect: { id: departementId } } } 
+                : {}),
+            },
+          },
+          roles: (roleId && roleId.trim() !== "") ? {
+            create: [
+              { role: { connect: { id: roleId } } }
+            ]
+          } : undefined,
+        },
+        include: { admin: true }
       });
+    });
+
+    // 3. ENVOI DE L'EMAIL (Hors transaction pour ne pas bloquer la DB en cas de lenteur SMTP)
+    // IMPORTANT: On envoie le 'password' original (en clair) reçu dans le DTO
+    try {
+      await this.emailService.sendAdminCredentials(
+        email, 
+        `${prenom} ${nom}`, 
+        adminCode, 
+        password // C'est ici que l'admin reçoit son mot de passe pour se connecter
+      );
+      this.logger.log(`Identifiants envoyés avec succès à ${email}`);
+    } catch (e) {
+      // On log l'erreur mais on ne crash pas l'inscription car l'admin est déjà créé en DB
+      console.error("L'email n'a pas pu être envoyé mais l'admin est créé:", e.message);
     }
 
-    return { message: 'Admin créé avec succès', user, admin };
+    return { 
+      message: 'Compte administrateur créé et identifiants envoyés par email.', 
+      user: { id: result.id, email: result.email }, 
+      admin: result.admin 
+    };
+
+  } catch (error) {
+    console.error("Erreur lors de la création de l'admin:", error);
+    if (error.code === 'P2003') {
+      throw new BadRequestException("Le département ou le rôle sélectionné est invalide.");
+    }
+    throw error;
+  }
+}
+/**
+ * Vérifie la progression de l'inscription d'un candidat
+ * @returns 0 si terminé, sinon le numéro de l'étape à remplir
+ */
+private async checkCandidateProgress(userId: string): Promise<number> {
+  const user = await this.prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      candidate: {
+        include: {
+          documents: true,
+          enrollements: true,
+        },
+      },
+    },
+  });
+
+  if (!user) return 1; // Devrait être impossible au login
+
+  // ÉTAPE 2 : Infos personnelles (le candidat n'a pas encore de date de naissance)
+  if (!user.candidate || !user.candidate.dateNaissance) {
+    return 2;
   }
 
+  // ÉTAPE 3 : Infos académiques & Matricule (pas de documents ou pas de matricule)
+  if (!user.candidate.matricule || !user.candidate.documents) {
+    return 3;
+  }
+
+  // ÉTAPE 4 : Choix des centres (pas d'enrôlement)
+  if (!user.candidate.enrollements || user.candidate.enrollements.length === 0) {
+    return 4;
+  }
+
+  // Inscription complète
+  return 0;
+}
   // ==================== REGISTER CANDIDATE STEP 1 ====================
   async registerCandidateStep1(dto: CreateUserStep1Dto) {
-    const { nom, prenom,password, email, telephone, region } = dto;
+  const { nom, prenom, password, email, telephone, region } = dto;
 
-    // Vérifier que l'email n'existe pas déjà
-    const existingUser = await this.prisma.user.findUnique({ where: { email } });
-    if (existingUser) throw new ConflictException('Cet email existe déjà.');
+  const hashedPassword = await this.hashPassword(password);
 
-    const hashedPassword = await this.hashPassword(password);
+  const user = await this.prisma.user.upsert({
+    where: { email: email },
+    update: {
+      // Données à mettre à jour si l'utilisateur existe déjà
+      nom,
+      prenom,
+      password: hashedPassword,
+      telephone,
+      region,
+      isVerified: true,
+    },
+    create: {
+      // Données à insérer si l'utilisateur n'existe pas
+      email,
+      nom,
+      prenom,
+      password: hashedPassword,
+      telephone,
+      region,
+      userType: 'CANDIDATE',
+      isVerified: true,
+    },
+  });
 
-
-    // Créer l'utilisateur sans lier le reçu (déjà validé à l'étape précédente)
-    const user = await this.prisma.user.create({
-      data: {
-        nom,
-        prenom,
-        password: hashedPassword,
-        email,
-        telephone,
-        region,
-        userType: 'CANDIDATE',
-        isVerified: true,
-      },
-    });
-
-    return { message: 'Inscription étape 1 réussie', user };
-  }
-
+  return { message: 'Inscription (upsert) réussie', user };
+}
   // ==================== REGISTER CANDIDATE STEP 2 ====================
 async registerCandidateStep2(dto: RegisterCandidateStep2Dto) {
   const { userId, data } = dto;
@@ -329,120 +413,236 @@ async registerCandidateStep4(candidateId: string, dto: RegisterCandidateStep4Dto
     enrollement,
   };
 }
+async findAllAdmins(page: number, limit: number) {
+  const skip = (page - 1) * limit;
+
+  // 1. Récupérer les données et le compte total en parallèle
+  const [admins, total] = await this.prisma.$transaction([
+    this.prisma.user.findMany({
+      where: {
+        userType: { in: ['ADMIN', 'SUPERADMIN'] },
+      },
+      include: {
+        admin: {
+          include: {
+            departement: true, // Pour afficher le nom du département
+          }
+        },
+        roles: {
+          include: {
+            role: true, // Pour afficher le nom du rôle
+          }
+        }
+      },
+      skip: skip,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+    }),
+    this.prisma.user.count({
+      where: { userType: { in: ['ADMIN', 'SUPERADMIN'] } }
+    }),
+  ]);
+
+  // 2. Calcul de la méta-donnée pour le frontend
+  const lastPage = Math.ceil(total / limit);
+
+  return {
+    data: admins,
+    meta: {
+      total,
+      page,
+      lastPage,
+    },
+  };
+}
+// ==================== UPDATE ADMIN ====================
+async updateAdmin(id: string, dto: Partial<RegisterAdminDto>) {
+  const { email, nom, prenom, telephone, region, departementId, roleId, userType } = dto;
+
+  // 1. Vérifier si l'admin existe
+  const existingUser = await this.prisma.user.findUnique({
+    where: { id },
+    include: { admin: true }
+  });
+  if (!existingUser) throw new NotFoundException("Cet administrateur n'existe pas.");
+
+  // 2. Transaction pour mettre à jour User et son profil Admin + Rôles
+  return await this.prisma.$transaction(async (tx) => {
+    // Mise à jour de l'utilisateur
+    const updatedUser = await tx.user.update({
+      where: { id },
+      data: {
+        email,
+        nom,
+        prenom,
+        telephone,
+        region,
+        userType,
+        // Mise à jour du profil Admin (département)
+        admin: {
+          update: {
+            departementId: departementId || undefined,
+          }
+        },
+        // Mise à jour des rôles (on supprime les anciens et on met le nouveau)
+        roles: roleId ? {
+          deleteMany: {}, // Supprime les anciennes relations UserRole pour cet user
+          create: [{ roleId: roleId }]
+        } : undefined,
+      },
+      include: { admin: true, roles: { include: { role: true } } }
+    });
+
+    return updatedUser;
+  });
+}
+
+// ==================== DELETE ADMIN ====================
+async deleteAdmin(id: string) {
+  // 1. Vérifier si l'utilisateur existe
+  const user = await this.prisma.user.findUnique({ where: { id } });
+  if (!user) throw new NotFoundException("Administrateur non trouvé.");
+
+  // 2. Suppression (Cascade delete doit être géré en BDD ou manuellement ici)
+  // Si ton schéma Prisma n'a pas 'onDelete: Cascade', on supprime manuellement :
+  await this.prisma.$transaction([
+    // Supprimer le profil admin
+    this.prisma.admin.deleteMany({ where: { userId: id } }),
+    // Supprimer les relations de rôles
+    this.prisma.userRole.deleteMany({ where: { userId: id } }),
+    // Supprimer l'utilisateur final
+    this.prisma.user.delete({ where: { id } }),
+  ]);
+
+  return { message: "Administrateur supprimé avec succès." };
+}
 
 
   // ==================== LOGIN ====================
 // src/auth/auth.service.ts
 async login(
   loginDto: LoginDto,
-  userType: 'ADMIN' | 'CANDIDATE',
+  userType: 'ADMIN' | 'CANDIDATE' | 'SUPERADMIN',
 ) {
   console.log('=== LOGIN START ===');
-  console.log('UserType:', userType);
-  console.log('Login DTO:', loginDto);
 
-  // ===================== CANDIDATE LOGIN =====================
- if (userType === 'CANDIDATE') {
-  const { password, numeroRecu } = loginDto;
+  // ===================== 1. LOGIN CANDIDAT =====================
+  if (userType === 'CANDIDATE') {
+    const { password, numeroRecu } = loginDto;
 
-  if (!password || !numeroRecu) {
-    throw new BadRequestException('Numéro de reçu et mot de passe requis');
-  }
+    if (!password || !numeroRecu) {
+      throw new BadRequestException('Numéro de reçu et mot de passe requis');
+    }
 
-  // 🔹 Chercher le paiement correspondant au numéro de reçu via la relation 'recu'
-  const paiement = await this.prisma.paiement.findFirst({
-    where: { 
-      recu: { numeroRecu } // 🔹 filtrer via la relation
-    },
-    include: { 
-      candidat: { include: { user: true } }, // 🔹 inclure candidat et user
-      recu: true,
-    },
-  });
+    const paiement = await this.prisma.paiement.findFirst({
+      where: { recu: { numeroRecu } },
+      include: { 
+        candidat: { include: { user: true } }, 
+        recu: true 
+      },
+    });
 
-  if (!paiement) {
-    throw new UnauthorizedException('Numéro de reçu invalide');
-  }
+    if (!paiement || !paiement.candidat?.user) {
+      throw new UnauthorizedException('Numéro de reçu invalide ou compte introuvable');
+    }
 
-  const user = paiement.candidat?.user;
-  if (!user) {
-    throw new UnauthorizedException('Aucun compte associé à ce paiement');
-  }
+    const user = paiement.candidat.user;
+    const isValidPassword = await bcrypt.compare(password, user.password ?? '');
+    if (!isValidPassword) throw new UnauthorizedException('Mot de passe incorrect');
+    // --- 🎯 VÉRIFICATION DE LA PROGRESSION ---
+// --- Fin de la logique de vérification du mot de passe ---
+  
+  // 🎯 VÉRIFICATION DE LA PROGRESSION
+  const registrationStep = await this.checkCandidateProgress(user.id);
 
-  const isValidPassword = await bcrypt.compare(password, user.password ?? '');
-  if (!isValidPassword) {
-    throw new UnauthorizedException('Mot de passe incorrect');
-  }
-
-  if (!user.isVerified) {
-    throw new UnauthorizedException('Compte non vérifié');
-  }
-
-  const payload = {
+  // GÉNÉRATION DU TOKEN (Contient déjà le candidateId pour la sécurité)
+  const access_token = await this.jwtService.signAsync({
     sub: user.id,
     userType: 'CANDIDATE',
     candidateId: paiement.candidatId,
+    registrationStep
+  });
+
+  // --- MISE À JOUR DU RETOUR ---
+  return { 
+    access_token, 
+    user: {
+      ...user,                  // On déverse les infos de l'entité User (nom, email, etc.)
+      candidateId: paiement.candidatId // On injecte l'ID du profil Candidat
+    }, 
+    registrationStep 
   };
-
-  const access_token = await this.jwtService.signAsync(payload);
-
-  return { access_token, user };
 }
 
+  // ===================== 2. LOGIN ADMIN / SUPERADMIN =====================
+  const { codeAdmin, password } = loginDto;
 
-  // ===================== ADMIN LOGIN =====================
-  const { email, password } = loginDto;
-  if (!email || !password) {
-    throw new BadRequestException('Email et mot de passe requis');
+  if (!codeAdmin || !password) {
+    throw new BadRequestException('Code admin et mot de passe requis');
   }
 
-  const user = await this.prisma.user.findUnique({
-    where: { email },
+  // 💡 UTILISATION DE findFirst pour éviter l'erreur sur AdminWhereUniqueInput
+  // 💡 ET AJOUT de l'include pour récupérer l'objet 'user'
+  const adminProfile = await this.prisma.admin.findFirst({
+    where: { codeAdmin: codeAdmin },
     include: {
-      roles: {
+      user: {
         include: {
-          role: {
-            include: { permissions: { include: { permission: true } } },
+          roles: {
+            include: {
+              role: {
+                include: { permissions: { include: { permission: true } } },
+              },
+            },
           },
+          admin: true, // Pour récupérer les infos de profil admin
         },
       },
-      admin: true,
     },
   });
 
-  if (!user) {
-    throw new UnauthorizedException('Email incorrect');
+  // Sécurité : on vérifie que le profil ET le user existent
+  if (!adminProfile || !adminProfile.user) {
+    throw new UnauthorizedException('Code administrateur incorrect');
   }
 
-  if (user.userType !== 'ADMIN') {
-    throw new UnauthorizedException("Cet utilisateur n'est pas un admin");
+  const user = adminProfile.user;
+
+  // Vérification du type
+  if (user.userType !== 'ADMIN' && user.userType !== 'SUPERADMIN') {
+    throw new UnauthorizedException('Accès refusé');
   }
 
   const isValid = await bcrypt.compare(password, user.password ?? '');
-  if (!isValid) {
-    throw new UnauthorizedException('Mot de passe incorrect');
-  }
+  if (!isValid) throw new UnauthorizedException('Mot de passe incorrect');
 
-  if (!user.isVerified) {
-    throw new UnauthorizedException('Compte non vérifié');
-  }
+  if (!user.isVerified) throw new UnauthorizedException('Compte non vérifié');
 
-  const permissions =
-    user.roles?.flatMap((ur) => ur.role.permissions.map((p) => p.permission.name)) || [];
+  // Extraction des permissions
+  const permissions = user.roles?.flatMap((ur) => 
+    ur.role.permissions.map((p) => p.permission.name)
+  ) || [];
 
-  const payload = {
+  const access_token = await this.jwtService.signAsync({
     sub: user.id,
     email: user.email,
-    userType: 'ADMIN',
+    userType: user.userType,
     permissions,
+  });
+
+  return { 
+    access_token, 
+    user: {
+      id: user.id,
+      email: user.email,
+      nom: user.nom,
+      prenom: user.prenom,
+      userType: user.userType,
+      admin: user.admin
+    }, 
+    permissions 
   };
-
-  const access_token = await this.jwtService.signAsync(payload);
-
-  console.log('=== ADMIN LOGIN SUCCESS ===');
-  return { access_token, user, permissions };
 }
-
 
 async getCandidateInfo(candidateId: string) {
   const candidate = await this.prisma.candidate.findUnique({

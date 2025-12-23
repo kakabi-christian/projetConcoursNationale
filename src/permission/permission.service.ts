@@ -13,9 +13,29 @@ export class PermissionService {
     });
   }
 
-  findAll() {
-    return this.prisma.permission.findMany();
+  // --- AJOUT DE LA PAGINATION ---
+  async findAll(page: number = 1, limit: number = 10) {
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      this.prisma.permission.findMany({
+        skip,
+        take: limit,
+        orderBy: { name: 'asc' }, // Tri par nom pour s'y retrouver plus facilement
+      }),
+      this.prisma.permission.count(),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        lastPage: Math.ceil(total / limit),
+      },
+    };
   }
+  // ------------------------------
 
   findOne(id: string) {
     return this.prisma.permission.findUnique({

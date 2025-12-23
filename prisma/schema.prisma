@@ -37,6 +37,7 @@ enum StatutEcole {
 enum UserType {
   ADMIN
   CANDIDATE
+  SUPERADMIN
 }
 enum TypeBac {
   GENERAL
@@ -134,6 +135,7 @@ model RolePermission {
 model Admin {
   id              String          @id @default(uuid())
   userId          String          @unique
+  codeAdmin       String?        
   departementId   String?
 
   user            User            @relation(fields: [userId], references: [id])
@@ -244,7 +246,7 @@ model Session {
   dateFin   DateTime
 
   // Relation 1:1 avec Concours (optionnelle)
-  concours  Concours? // pas besoin de fields/references ici
+  concours  Concours[] // pas besoin de fields/references ici
 
   enrollements Enrollement[]
 
@@ -262,7 +264,7 @@ model Concours {
   annee     Annee?    @relation(fields: [anneeId], references: [id])
 
   // Relation 1:1 optionnelle avec Session
-  sessionId String?   @unique
+  sessionId String?  
   session   Session?  @relation(fields: [sessionId], references: [id])
 
   enrollements  Enrollement[]
@@ -486,14 +488,15 @@ model Otp {
 }
 
 model Feedback {
-  id              String          @id @default(uuid())
-  userId          String
-  comment         String
+  id        String   @id @default(uuid())
+  userId    String @unique
+  comment   String
+  note      Int      // Ajout du champ note (1 à 5)
 
-  user            User            @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Notifications {

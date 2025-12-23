@@ -6,12 +6,9 @@ import {
   IsOptional,
   IsEnum,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'; // Imports Swagger
-import { Region } from '@prisma/client';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Region, UserType } from '@prisma/client';
 
-/**
- * DTO pour l'enregistrement d'un administrateur
- */
 export class RegisterAdminDto {
   @ApiProperty({
     description: "L'adresse email qui servira d'identifiant",
@@ -52,31 +49,40 @@ export class RegisterAdminDto {
     description: 'Numéro de téléphone de contact',
     example: '+237690000000',
   })
-  @IsString({ message: 'Le téléphone doit être une chaîne de caractères' })
+  @IsString()
   @IsOptional()
   telephone?: string;
 
   @ApiPropertyOptional({
     description: 'La région géographique rattachée',
-    enum: Region, // Swagger affichera automatiquement une liste déroulante des régions Prisma
+    enum: Region,
   })
-  @IsEnum(Region, { message: 'Région invalide' })
+  @IsEnum(Region)
   @IsOptional()
   region?: Region;
 
   @ApiPropertyOptional({
-    description: "L'ID unique du département (UUID)",
-    example: 'dept-123-abc',
+    description: "Type de compte (ADMIN ou SUPERADMIN)",
+    enum: UserType,
+    default: UserType.ADMIN,
   })
-  @IsString({ message: 'ID du département invalide' })
+  @IsEnum(UserType)
+  @IsOptional()
+  userType?: UserType;
+
+  @ApiPropertyOptional({
+    description: "L'ID unique du département",
+    example: 'uuid-dept',
+  })
+  @IsString()
   @IsOptional()
   departementId?: string;
 
   @ApiPropertyOptional({
-    description: "L'ID du rôle assigné (RBAC)",
-    example: 'role-super-admin-uuid',
+    description: "L'ID du rôle assigné",
+    example: 'uuid-role',
   })
-  @IsString({ message: 'ID du rôle invalide' })
+  @IsString()
   @IsOptional()
   roleId?: string;
 }

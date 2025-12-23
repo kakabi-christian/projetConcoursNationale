@@ -10,6 +10,8 @@ import {
   UseInterceptors,
   UseGuards,
   Query,
+  Req,
+  Res,
 } from '@nestjs/common';
 import { 
   ApiTags, 
@@ -19,11 +21,11 @@ import {
   ApiBearerAuth, 
   ApiQuery, 
   ApiParam, 
-  ApiResponse 
-} from '@nestjs/swagger'; // Imports Swagger
+} from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { join } from 'path';
+import express from 'express'; // ✅ IMPORT CRUCIAL
 import { ArchiveService } from './archive.service';
 import { CreateArchiveDto } from './dto/create-archive.dto';
 import { UpdateArchiveDto } from './dto/update-archive.dto';
@@ -41,6 +43,25 @@ import { Public } from 'src/auth/decorators/public.decorator';
 export class ArchiveController {
   constructor(private readonly archiveService: ArchiveService) {}
 
+  @Get('my-speciality')
+  @ApiOperation({ summary: 'Récupérer les archives filtrées par la spécialité du candidat connecté' })
+  async findMySpecialityArchives(
+    @Req() req: any,
+    @Query('anneeId') anneeId?: string,
+    @Query('search') search?: string,
+  ) {
+    const candidateId = req.user.candidateId; 
+    return this.archiveService.findForCandidate(candidateId, { anneeId, search });
+  }
+
+  // --- NOUVELLE ROUTE DE TÉLÉCHARGEMENT ---
+  @Public() 
+  @Get('download/:filename')
+  @ApiOperation({ summary: 'Télécharger ou afficher un fichier archive' })
+  async getFile(@Param('filename') filename: string, @Res() res: express.Response) {
+    return this.archiveService.downloadFile(filename, res);
+  }
+
   @Post('upload')
   @Permissions('creer_archive')
   @UseInterceptors(
@@ -54,18 +75,8 @@ export class ArchiveController {
       }),
     }),
   )
-  @ApiOperation({ summary: 'Uploader un fichier d\'archive et créer l\'entrée' })
-  @ApiConsumes('multipart/form-data') // Spécifie que c'est un envoi de fichier
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        file: { type: 'string', format: 'binary', description: 'Le fichier PDF ou Image' },
-        epreuveId: { type: 'string' },
-        anneeId: { type: 'string' },
-      },
-    },
-  })
+  @ApiOperation({ summary: 'Uploader un fichier d\'archive' })
+  @ApiConsumes('multipart/form-data')
   async uploadArchive(
     @UploadedFile() file: Express.Multer.File,
     @Body() createArchiveDto: CreateArchiveDto,
@@ -76,12 +87,6 @@ export class ArchiveController {
 
   @Get()
   @Public()
-  @ApiOperation({ summary: 'Lister les archives avec filtres et pagination' })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'search', required: false, type: String })
-  @ApiQuery({ name: 'epreuveId', required: false, type: String })
-  @ApiQuery({ name: 'anneeId', required: false, type: String })
   findAll(
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
@@ -100,35 +105,19 @@ export class ArchiveController {
 
   @Get(':id')
   @Public()
-  @ApiOperation({ summary: 'Obtenir une archive par son ID' })
-  @ApiParam({ name: 'id', description: 'ID de l\'archive' })
   findOne(@Param('id') id: string) {
     return this.archiveService.findOne(id);
   }
 
   @Patch(':id')
   @Permissions('modifier_archive')
-  @ApiOperation({ summary: 'Mettre à jour une archive' })
   update(@Param('id') id: string, @Body() updateArchiveDto: UpdateArchiveDto) {
     return this.archiveService.update(id, updateArchiveDto);
   }
 
   @Delete(':id')
   @Permissions('supprimer_archive')
-  @ApiOperation({ summary: 'Supprimer une archive' })
   remove(@Param('id') id: string) {
     return this.archiveService.remove(id);
-  }
-
-  @Get('epreuve/:id')
-  @Public()
-  @ApiOperation({ summary: 'Lister les archives d\'une épreuve spécifique' })
-  @ApiParam({ name: 'id', description: 'ID de l\'épreuve' })
-  findByEpreuve(
-    @Param('id') id: string,
-    @Query('page') page: string = '1',
-    @Query('limit') limit: string = '10',
-  ) {
-    return this.archiveService.findByEpreuve(id, Number(page), Number(limit));
   }
 }
