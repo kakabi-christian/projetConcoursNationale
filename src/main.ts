@@ -7,12 +7,15 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // ✅ Activer CORS pour React (port 3001)
-  app.enableCors({
-    origin: 'http://localhost:3001',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true,
-  });
+ app.enableCors({
+  origin: [
+    'http://localhost:3001',
+    'http://localhost:3002',
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+});
 
   // ✅ Configuration Swagger (AVANT listen)
   const config = new DocumentBuilder()
