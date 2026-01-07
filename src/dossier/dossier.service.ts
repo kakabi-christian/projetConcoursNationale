@@ -62,7 +62,7 @@ async updateStatus(providedId: string, dto: UpdateDossierStatusDto) {
       notifMessage = `Bonjour ${userName}, nous avons le plaisir de vous informer que votre dossier de candidature a été examiné avec succès. Toutes vos pièces justificatives sont conformes. Votre inscription est désormais validée. Nous vous souhaitons bonne chance pour la suite du concours !`;
       break;
 
-    case DocStatus.REJECTED:
+    case DocStatus.PENDING:
       notifType = NotificationType.ERROR;
       notifMessage = `Bonjour ${userName}, après examen de votre dossier, nous sommes au regret de vous informer que celui-ci a été rejeté. Motif : ${dto.commentaire || "Certains documents ne correspondent pas aux critères requis."}. Nous vous invitons à rectifier les pièces concernées et à les soumettre de nouveau dans les plus brefs délais.`;
       break;

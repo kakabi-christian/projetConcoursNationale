@@ -37,7 +37,7 @@ export class CandidatesController {
   }
 
   // ======================================================
-  // 3. NOUVEAU : RÉCUPÉRER LES SPÉCIALITÉS PAR FILIÈRE
+  // 3. RÉCUPÉRER LES SPÉCIALITÉS PAR FILIÈRE
   // ======================================================
   @Public()
   @Get('specialites/:filiereId')
@@ -48,63 +48,80 @@ export class CandidatesController {
   }
 
   // ======================================================
-  // 4. LISTE DÉTAILLÉE DES CANDIDATS (ADMIN) - MISE À JOUR
+  // 4. LISTE DÉTAILLÉE DES CANDIDATS (ADMIN) - MISE À JOUR AVEC CENTRES
   // ======================================================
-  @Get('list-detailed')
   @Public()
-  @ApiOperation({ summary: 'Récupérer une liste détaillée avec filtres filière et spécialité' })
+  @Get('list-detailed')
+  @ApiOperation({ summary: 'Récupérer une liste détaillée avec filtres avancés (Filière, Centre, Statut)' })
   @ApiQuery({ name: 'search', required: false, type: String })
   @ApiQuery({ name: 'filiereId', required: false, type: String })
-  @ApiQuery({ name: 'specialiteId', required: false, type: String }) // Nouveau filtre
+  @ApiQuery({ name: 'specialiteId', required: false, type: String })
+  @ApiQuery({ name: 'centreExamenId', required: false, type: String }) // Nouveau filtre Swagger
+  @ApiQuery({ name: 'centreDepotId', required: false, type: String })  // Nouveau filtre Swagger
   @ApiQuery({ name: 'sexe', required: false, enum: ['MASCULIN', 'FEMININ'] })
+  @ApiQuery({ name: 'statut', required: false, type: String })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
   @ApiResponse({ status: 200, description: 'Succès' })
-@Get('list-detailed')
-  @Public()
-  @ApiOperation({ summary: 'Récupérer une liste détaillée avec filtres' })
-  // ... (tes autres ApiQuery)
-  @ApiQuery({ name: 'statut', required: false, type: String }) // Ajoute ceci pour Swagger
   async getDetailedList(
     @Query('search') search?: string,
     @Query('filiereId') filiereId?: string,
     @Query('specialiteId') specialiteId?: string,
+    @Query('centreExamenId') centreExamenId?: string, // AJOUT ICI
+    @Query('centreDepotId') centreDepotId?: string,   // AJOUT ICI
     @Query('sexe') sexe?: string,
-    @Query('statut') statut?: string, // 1. AJOUTE CETTE LIGNE
+    @Query('statut') statut?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    // 2. Transmet le statut au service
+    // Appel du service avec les nouveaux paramètres de centres
     const result = await this.candidatesService.findAllDetailed({
       search,
       filiereId,
       specialiteId,
+      centreExamenId, // TRANSMISSION AU SERVICE
+      centreDepotId,  // TRANSMISSION AU SERVICE
       sexe: sexe as any,
-      statut, // 3. TRANSMISSION ICI
+      statut,
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 10
     });
 
-    const formattedCandidates = result.data.map(c => ({
-      id: c.id,
-      matricule: c.matricule || 'N/A',
-      user: c.user, // Garde l'objet user complet pour le frontend
-      nom: c.user?.nom || '',
-      prenom: c.user?.prenom || '',
-      sexe: c.sexe,
-      dossier: c.dossier, // 4. INDISPENSABLE : Ajoute ceci pour que le badge fonctionne !
-      filiere: c.specialites?.[0]?.specialite?.filiere?.intitule || 'N/A',
-      specialite: c.specialites?.[0]?.specialite?.libelle || 'N/A'
-    }));
+    const formattedCandidates = result.data.map(c => {
+      // On récupère le premier enrollement pour extraire les infos de centre
+      const activeEnrollment = c.enrollements?.[0];
+
+      return {
+        id: c.id,
+        matricule: c.matricule || 'N/A',
+        user: c.user,
+        nom: c.user?.nom || '',
+        prenom: c.user?.prenom || '',
+        sexe: c.sexe,
+        dossier: c.dossier,
+        // Informations de localisation et centres
+        filiere: c.specialites?.[0]?.specialite?.filiere?.intitule || 'N/A',
+        specialite: c.specialites?.[0]?.specialite?.libelle || 'N/A',
+        centreExamen: activeEnrollment?.centreExamen?.intitule || 'Non défini',
+        centreDepot: activeEnrollment?.centreDepot?.intitule || 'Non défini',
+        concours: activeEnrollment?.concours?.intitule || 'N/A'
+      };
+    });
 
     return {
       candidates: formattedCandidates,
       pagination: result.meta
     };
   }
-  @Get('export/pdf')
+
+  // ======================================================
+  // 5. EXPORT PDF FILTRÉ
+  // ======================================================
   @Public()
+  @Get('export/pdf')
+  @ApiOperation({ summary: 'Exporter la liste filtrée en format PDF' })
   async downloadPdf(@Query() query: any, @Res() res: any) {
+    // L'objet query contient déjà centreExamenId, filiereId, etc.
     const buffer = await this.candidatesService.exportToPdf(query);
     
     res.set({
@@ -115,5 +132,4 @@ export class CandidatesController {
 
     res.end(buffer);
   }
-  
 }

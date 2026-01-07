@@ -8,6 +8,8 @@ import { VerifyOtpDto } from './dto/verifiy-otopdto';
 import * as QRCode from 'qrcode';
 import PDFDocument from 'pdfkit';
 import type { Response } from 'express';
+import * as path from 'path';
+import * as fs from 'fs';
 
 @Injectable()
 export class PaiementService {
@@ -30,7 +32,6 @@ export class PaiementService {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
-  // Création du paiement avec QR code pointant vers le PDF
   async createPaiement(createPaiementDto: CreatePaiementDto) {
     const concours = await this.prisma.concours.findUnique({
       where: { id: createPaiementDto.concoursId },
@@ -49,9 +50,9 @@ export class PaiementService {
     });
 
     const numeroRecu = `REC-${Math.floor(Math.random() * 1000000)}`;
-    const dateRecu = new Date(); // <-- Date du reçu
+    const dateRecu = new Date();
 
-    // Générer QR code qui contient l'URL vers le PDF
+    // Le QR Code pointe toujours vers cette URL Ngrok
     const pdfUrl = `${process.env.BACKEND_URL}/paiement/recu/${numeroTransaction}/pdf`;
     const qrCodeDataUrl = await QRCode.toDataURL(pdfUrl);
 
@@ -63,139 +64,157 @@ export class PaiementService {
         telephone: createPaiementDto.telephone,
         concours: concours.intitule,
         qrCode: qrCodeDataUrl,
-        createdAt: dateRecu, // <-- stocker la date du reçu
+        createdAt: dateRecu,
       },
     });
 
     return { paiement, recu };
   }
 
-  // 🔐 Demander un OTP
-  async requestOtp(requestOtpDto: RequestOtpDto) {
-    const { email } = requestOtpDto;
-
-    const recu = await this.prisma.recu.findFirst({
-      where: { paiement: { email } },
+  // --- LOGIQUE PDF DYNAMIQUE (PHOTO + CNI SI VALIDÉ) ---
+  async generatePdf(recuData: any, res: Response) {
+    // 1. Chercher si un dossier validé existe pour cet utilisateur
+    const dossier = await this.prisma.dossier.findFirst({
+      where: { 
+        candidate: { 
+          user: { email: recuData.paiement.email } 
+        } 
+      },
+      include: { 
+        candidate: { 
+          include: { user: true } 
+        } 
+      }
     });
 
-    if (!recu) throw new NotFoundException('Aucun reçu trouvé pour cet email');
-
-    await this.prisma.otp.deleteMany({
-      where: { email, isUsed: false },
-    });
-
-    const code = this.generateOtpCode();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-    await this.prisma.otp.create({ data: { email, code, expiresAt } });
-
-    await this.emailService.sendOtpEmail(email, code);
-
-    return { message: 'Code de vérification envoyé à votre email', email };
-  }
-
-  // 🔐 Vérifier OTP et récupérer le reçu
-  async verifyOtpAndGetRecu(verifyOtpDto: VerifyOtpDto) {
-    const { email, code } = verifyOtpDto;
-
-    const otp = await this.prisma.otp.findFirst({
-      where: { email, code, isUsed: false },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (!otp) throw new BadRequestException('Code OTP invalide');
-    if (new Date() > otp.expiresAt) throw new BadRequestException('Code OTP expiré');
-
-    await this.prisma.otp.update({ where: { id: otp.id }, data: { isUsed: true } });
-
-    const recu = await this.prisma.recu.findFirst({
-      where: { paiement: { email } },
-      include: { paiement: true },
-    });
-
-    if (!recu) throw new NotFoundException('Aucun reçu trouvé');
-
-    return recu;
-  }
-
-  // 📄 Récupérer le reçu par numéro de transaction
-  async getRecuByTransaction(numeroTransaction: string) {
-    const recu = await this.prisma.recu.findFirst({
-      where: { paiement: { numeroTransaction } },
-      include: { paiement: true },
-    });
-    return recu;
-  }
-
-  // 📄 Générer PDF et l’envoyer via la réponse HTTP
-  generatePdf(recuData: any, res: Response) {
+    const isValidated = dossier?.statut === 'VALIDATED';
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename=recu-${recuData.paiement.numeroTransaction}.pdf`);
+    const prefix = isValidated ? 'ADMISSION' : 'RECU';
+    res.setHeader('Content-Disposition', `inline; filename=${prefix}-${recuData.paiement.numeroTransaction}.pdf`);
 
     doc.pipe(res);
 
-    doc.fontSize(20).text('Reçu de Paiement', { align: 'center' });
+    // --- ENTÊTE ---
+    if (isValidated) {
+      doc.fillColor('#1a5a96').fontSize(22).text('CARTE D\'ADMISSION AU CONCOURS', { align: 'center' });
+      doc.fontSize(10).fillColor('green').text('DOSSIER VÉRIFIÉ ET ADMISSIBLE', { align: 'center' });
+    } else {
+      doc.fontSize(20).fillColor('black').text('REÇU DE PAIEMENT', { align: 'center' });
+      doc.fontSize(10).fillColor('orange').text('INSCRIPTION EN COURS DE TRAITEMENT', { align: 'center' });
+    }
+
+    doc.moveDown();
+    doc.strokeColor('#eeeeee').moveTo(50, doc.y).lineTo(550, doc.y).stroke();
     doc.moveDown();
 
-    doc.fontSize(12).text(`Nom: ${recuData.paiement.nomComplet}`);
-    doc.fontSize(12).text(`Prenom: ${recuData.paiement.Prenom}`);
+    // --- INSERTION PHOTO DE PROFIL (Si validé) ---
+    if (isValidated && dossier.photoProfil) {
+      try {
+        const photoPath = path.join(process.cwd(), dossier.photoProfil);
+        if (fs.existsSync(photoPath)) {
+          doc.image(photoPath, 430, 120, { width: 110, height: 130 });
+          doc.rect(430, 120, 110, 130).stroke(); // Cadre
+        }
+      } catch (e) {
+        console.error("Erreur insertion photo PDF:", e);
+      }
+    }
+
+    // --- INFORMATIONS DU CANDIDAT ---
+    doc.fillColor('black').fontSize(12);
+    doc.text(`Nom: ${recuData.paiement.nomComplet.toUpperCase()}`, 50, 130);
+    doc.text(`Prénom: ${recuData.paiement.prenom || recuData.paiement.Prenom}`);
     doc.text(`Email: ${recuData.paiement.email}`);
     doc.text(`Téléphone: ${recuData.paiement.telephone}`);
-    doc.text(`Concours: ${recuData.concours}`);
-    doc.text(`Montant: ${recuData.montant} FCFA`);
-    doc.text(`Numéro de transaction: ${recuData.paiement.numeroTransaction}`);
+    doc.moveDown();
+    doc.fontSize(14).text(`CONCOURS: ${recuData.concours}`, { bold: true });
+    
+    if (isValidated) {
+      doc.fillColor('#1a5a96').text(`MATRICULE: ${dossier.candidate.matricule || 'N/A'}`);
+    }
+
+    doc.moveDown(2);
+    doc.fillColor('black').fontSize(10).text(`Numéro de transaction: ${recuData.paiement.numeroTransaction}`);
     doc.text(`Numéro de reçu: ${recuData.numeroRecu}`);
 
-    // Ajouter la date du reçu
-    const dateOptions: Intl.DateTimeFormatOptions = {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    };
-    const dateFormatee = new Date(recuData.createdAt).toLocaleString('fr-FR', dateOptions);
-    doc.text(`Date du reçu: ${dateFormatee}`);
+    const dateFormatee = new Date(recuData.createdAt).toLocaleString('fr-FR');
+    doc.text(`Date du paiement: ${dateFormatee}`);
 
-    doc.moveDown();
+    // --- INSERTION CNI (Si validé - en bas de page) ---
+    if (isValidated && dossier.photoCni) {
+      doc.moveDown(4);
+      doc.fontSize(12).text('PIÈCE D\'IDENTITÉ (CNI) :', { underline: true });
+      doc.moveDown();
+      try {
+        const cniPath = path.join(process.cwd(), dossier.photoCni);
+        if (fs.existsSync(cniPath)) {
+          doc.image(cniPath, { fit: [300, 200] });
+        }
+      } catch (e) {
+        doc.text("[Image CNI non disponible]");
+      }
+    }
 
-    // Ajouter QR code existant si présent
+    // --- QR CODE (Bas de page) ---
     if (recuData.qrCode) {
       const qrImage = recuData.qrCode.replace(/^data:image\/png;base64,/, '');
       const buffer = Buffer.from(qrImage, 'base64');
-      doc.image(buffer, { fit: [150, 150], align: 'center' });
+      doc.image(buffer, 460, 720, { width: 80 });
+      doc.fontSize(8).text("Authenticité garantie", 455, 805);
     }
 
     doc.end();
   }
+
+  // --- AUTRES MÉTHODES (Gardées telles quelles) ---
+
+  async requestOtp(requestOtpDto: RequestOtpDto) {
+    const { email } = requestOtpDto;
+    const recu = await this.prisma.recu.findFirst({ where: { paiement: { email } } });
+    if (!recu) throw new NotFoundException('Aucun reçu trouvé pour cet email');
+    await this.prisma.otp.deleteMany({ where: { email, isUsed: false } });
+    const code = this.generateOtpCode();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await this.prisma.otp.create({ data: { email, code, expiresAt } });
+    await this.emailService.sendOtpEmail(email, code);
+    return { message: 'Code de vérification envoyé à votre email', email };
+  }
+
+  async verifyOtpAndGetRecu(verifyOtpDto: VerifyOtpDto) {
+    const { email, code } = verifyOtpDto;
+    const otp = await this.prisma.otp.findFirst({
+      where: { email, code, isUsed: false },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!otp) throw new BadRequestException('Code OTP invalide');
+    if (new Date() > otp.expiresAt) throw new BadRequestException('Code OTP expiré');
+    await this.prisma.otp.update({ where: { id: otp.id }, data: { isUsed: true } });
+    const recu = await this.prisma.recu.findFirst({
+      where: { paiement: { email } },
+      include: { paiement: true },
+    });
+    if (!recu) throw new NotFoundException('Aucun reçu trouvé');
+    return recu;
+  }
+
+  async getRecuByTransaction(numeroTransaction: string) {
+    return this.prisma.recu.findFirst({
+      where: { paiement: { numeroTransaction } },
+      include: { paiement: true },
+    });
+  }
+
   async verifyRecuForRegistration(numeroRecu: string) {
-    // Chercher le reçu
     const recu = await this.prisma.recu.findUnique({
       where: { numeroRecu },
-      include: {
-        paiement: {
-          include: {
-            concours: true,
-          },
-        },
-      },
+      include: { paiement: { include: { concours: true } } },
     });
-
-    // Vérifier si le reçu existe
-    if (!recu) {
-      throw new NotFoundException('Numéro de reçu invalide');
-    }
-
-    // Vérifier si le reçu n'a pas déjà été utilisé
-    if (recu.estUtilise) {
-      throw new BadRequestException('Ce reçu a déjà été utilisé pour une inscription');
-    }
-
-    // Retourner les infos du reçu + paiement (pour pré-remplir le formulaire)
+    if (!recu) throw new NotFoundException('Numéro de reçu invalide');
+    if (recu.estUtilise) throw new BadRequestException('Ce reçu a déjà été utilisé');
     return {
-    message: 'Reçu valide',
+      message: 'Reçu valide',
       numeroRecu: recu.numeroRecu,
       paiement: {
         nomComplet: recu.paiement?.nomComplet ?? 'N/A',
@@ -205,16 +224,15 @@ export class PaiementService {
         concours: recu.paiement?.concours?.intitule ?? recu.concours,
         montant: recu.montant,
       },
-    }
+    };
   }
-   async getPaiementInfoByRecu(numeroRecu: string) {
+
+  async getPaiementInfoByRecu(numeroRecu: string) {
     const recu = await this.prisma.recu.findUnique({
       where: { numeroRecu },
       include: { paiement: { include: { concours: true } } },
     });
-
     if (!recu) throw new NotFoundException('Reçu introuvable');
-
     return {
       nom: recu.paiement?.nomComplet ?? '',
       prenom: recu.paiement?.prenom ?? '',

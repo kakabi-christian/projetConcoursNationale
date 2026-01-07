@@ -36,24 +36,30 @@ export class CandidatesService {
   }
 
   // --- MÉTHODE MISE À JOUR : Recherche avec filtres Filière, Spécialité & Statut Dossier ---
+  // --- MÉTHODE MISE À JOUR : Ajout des filtres par Centre d'Examen et Centre de Dépôt ---
   async findAllDetailed(query: { 
     search?: string, 
     filiereId?: string, 
     specialiteId?: string, 
+    centreExamenId?: string, // Nouveau filtre
+    centreDepotId?: string,  // Nouveau filtre
     sexe?: any,
     statut?: string, 
     page?: number,
     limit?: number 
   }) {
-    this.logger.log('📥 findAllDetailed() called with enhanced filters');
-    const { search, filiereId, specialiteId, sexe, statut, page = 1, limit = 10 } = query;
+    this.logger.log('📥 findAllDetailed() called with enhanced filters (including centers)');
+    const { 
+      search, filiereId, specialiteId, centreExamenId, 
+      centreDepotId, sexe, statut, page = 1, limit = 10 
+    } = query;
+    
     const take = Number(limit);
     const skip = (Number(page) - 1) * take;
 
-    // 1. Construction dynamique du tableau AND pour éviter les objets vides
     const andFilters: Prisma.CandidateWhereInput[] = [];
 
-    // Recherche textuelle
+    // 1. Recherche textuelle
     if (search && search.trim() !== "") {
       andFilters.push({
         OR: [
@@ -65,21 +71,39 @@ export class CandidatesService {
       });
     }
 
-    // Filtre par Sexe
+    // 2. Filtre par Sexe
     if (sexe && sexe !== "") {
       andFilters.push({ sexe });
     }
 
-    // FILTRE PAR STATUT DU DOSSIER (Relation 1:1)
+    // 3. Filtre par Statut du Dossier
     if (statut && statut !== "") {
       andFilters.push({
         dossier: {
-          statut: statut as DocStatus // Cast vers l'Enum correct
+          statut: statut as DocStatus
         }
       });
     }
 
-    // FILTRE PAR FILIÈRE
+    // 4. FILTRE PAR CENTRE D'EXAMEN (Via Enrollement)
+    if (centreExamenId && centreExamenId !== "") {
+      andFilters.push({
+        enrollements: {
+          some: { centreExamenId: centreExamenId }
+        }
+      });
+    }
+
+    // 5. FILTRE PAR CENTRE DE DÉPÔT (Via Enrollement)
+    if (centreDepotId && centreDepotId !== "") {
+      andFilters.push({
+        enrollements: {
+          some: { centreDepotId: centreDepotId }
+        }
+      });
+    }
+
+    // 6. FILTRE PAR FILIÈRE
     if (filiereId && filiereId !== "") {
       andFilters.push({
         specialites: {
@@ -90,7 +114,7 @@ export class CandidatesService {
       });
     }
 
-    // FILTRE PAR SPÉCIALITÉ
+    // 7. FILTRE PAR SPÉCIALITÉ
     if (specialiteId && specialiteId !== "") {
       andFilters.push({
         specialites: {
@@ -99,7 +123,6 @@ export class CandidatesService {
       });
     }
 
-    // Objet final pour Prisma
     const where: Prisma.CandidateWhereInput = andFilters.length > 0 ? { AND: andFilters } : {};
 
     try {
@@ -125,7 +148,11 @@ export class CandidatesService {
               orderBy: { createdAt: 'desc' }
             },
             enrollements: {
-              include: { centreExamen: true, centreDepot: true },
+              include: { 
+                centreExamen: true, 
+                centreDepot: true,
+                concours: true 
+              },
               take: 1
             },
             specialites: {
@@ -144,7 +171,7 @@ export class CandidatesService {
       ]);
 
       return {
-        data: candidates, // Retourné sous la clé 'data' pour la cohérence
+        data: candidates,
         meta: {
           total,
           page: Number(page),
@@ -154,7 +181,7 @@ export class CandidatesService {
         }
       };
     } catch (error) {
-      this.logger.error('❌ Erreur lors de la récupération des candidats avec filtres', error);
+      this.logger.error('❌ Erreur lors de la récupération des candidats filtrés', error);
       throw error;
     }
   }
