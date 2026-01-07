@@ -9,12 +9,13 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailService } from 'src/email/email.service';
-
+import { NotificationModule } from 'src/notification/notification.module';
+import { NotificationService } from 'src/notification/notification.service';
 @Module({
   imports: [
     // Module Prisma pour accéder à la BD
     PrismaModule,
-    
+        
     // Module Passport pour l'authentification
     PassportModule.register({ defaultStrategy: 'jwt' }),
     
@@ -37,6 +38,7 @@ import { EmailService } from 'src/email/email.service';
     JwtAuthGuard,
     RolesGuard,
     EmailService,
+    NotificationService
   ],
   exports: [
     AuthService,

@@ -35,6 +35,7 @@ import { CentreDepotModule } from './centre-depot/centre-depot.module';
 import { StatistiqueModule } from './statistique/statistique.module';
 import { CandidatesModule } from './candidates/candidates.module';
 import { FeebacksModule } from './feebacks/feebacks.module';
+import { DossierModule } from './dossier/dossier.module';
 
 @Module({
   imports: [
@@ -78,6 +79,7 @@ import { FeebacksModule } from './feebacks/feebacks.module';
     StatistiqueModule,
     CandidatesModule,
     FeebacksModule,
+    DossierModule,
   ],
   controllers: [AppController],
   providers: [

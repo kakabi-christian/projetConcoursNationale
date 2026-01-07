@@ -407,7 +407,26 @@ async registerCandidateStep4(candidateId: string, dto: RegisterCandidateStep4Dto
     where: { id: paiement.id },
     data: { enrollementId: enrollement.id },
   });
-
+  // 3. RÉDACTION DE LA BELLE PHRASE ET CRÉATION DE LA NOTIFICATION
+  // On récupère l'userId pour lier la notification
+  const candidateWithUser = await this.prisma.candidate.findUnique({
+    where: { id: candidateId },
+    select: { userId: true }
+  });
+  const notificationMessage = 
+    `Félicitations ! Votre inscription au concours "${concours.intitule}" est presque terminée. ` +
+    `Veuillez maintenant vous rendre dans la section "Mes Dossiers" pour soumettre vos pièces justificatives afin de valider définitivement votre candidature.`;
+  
+  await this.prisma.notifications.create({
+    data: {
+      userId: candidate.userId,
+      message: notificationMessage,
+      type: 'INFO', // Assure-toi que 'INFO' fait partie de ton enum NotificationType
+      isRead: false,
+      isBroadcast: false,
+      sentAt: new Date(),
+    },
+  }); 
   return {
     message: 'Inscription étape 4 réussie - Centres enregistrés',
     enrollement,

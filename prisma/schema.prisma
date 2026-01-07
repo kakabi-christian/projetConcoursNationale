@@ -25,8 +25,17 @@ enum Region {
 
 enum NotificationType {
   INFO
+  SUCCESS
+  WARNING
+  ERROR
   ALERT
   SYSTEM
+  DOSSIER_STATUS
+}
+enum DocStatus {
+  PENDING    // En attente de vérification admin
+  VALIDATED  // Dossier accepté
+  REJECTED   // Dossier refusé (message envoyé au candidat)
 }
 
 enum StatutEcole {
@@ -168,6 +177,8 @@ model Candidate {
   enrollements    Enrollement[]
   paiements       Paiement[]
   documents       Documents?
+  // 🆕 AJOUT : Relation avec la nouvelle table Dossier
+  dossier         Dossier?
   recus           Recu[]
   specialites     CandidatSpecialite[]
 
@@ -427,13 +438,36 @@ model CentreDepot {
 
 
 model PieceDossier {
-  id            String          @id @default(uuid())
-  nom           String
+  id        String     @id @default(uuid())
+  nom       String     // ex: "Photo de la CNI"
+  code      String? // ex: "photoCni", "photoDiplome"
+  
+  concours  Concours[] @relation("ConcoursPieces")
 
-  concours      Concours[]      @relation("ConcoursPieces") // Relation inverse
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+model Dossier {
+  id                String    @id @default(uuid())
+  
+  // Champs de stockage des fichiers (URLs ou Chemins)
+  photoCni          String?
+  photoDiplome      String?
+  photoProfil       String?
+  photoActeNaiss    String?
+  photoRecuPaiement String?
 
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  // Un seul champ statut pour tout le dossier
+  statut            DocStatus @default(PENDING)
+  
+  commentaire       String?
+
+  // Relation 1:1 avec le Candidat
+  candidateId       String    @unique
+  candidate         Candidate @relation(fields: [candidateId], references: [id])
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }
 model Recu {
   id            String   @id @default(uuid())
