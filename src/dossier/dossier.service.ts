@@ -4,16 +4,16 @@ import { DocStatus, Prisma, NotificationType } from '@prisma/client';
 import { UpdateDossierStatusDto } from './dto/update-dossier-status.dto';
 import { NotificationService } from '../notification/notification.service';
 import { WhatsappService } from 'src/whatsapp/whatsapp.service';
+import * as QRCode from 'qrcode';
 
 @Injectable()
 export class DossierService {
   private readonly logger = new Logger(DossierService.name);
 
-  // CORRECTION : L'injection se fait obligatoirement ici dans le constructeur
   constructor(
     private prisma: PrismaService,
     private notificationService: NotificationService,
-    private whatsappService: WhatsappService // Ajouté ici
+    private whatsappService: WhatsappService
   ) {}
 
   /**
@@ -27,19 +27,20 @@ export class DossierService {
   }
 
   /**
-   * UPDATE STATUS + NOTIFICATION DASHBOARD + WHATSAPP
+   * UPDATE STATUS + GÉNÉRATION QR CODE + NOTIFICATIONS
    */
   async updateStatus(providedId: string, dto: UpdateDossierStatusDto) {
-    this.logger.debug(`🚀 Début updateStatus pour ID: ${providedId}`);
-    this.logger.debug(`📦 Données reçues: ${JSON.stringify(dto)}`);
+    this.logger.log('--------------------------------------------------------');
+    this.logger.log(`🚀 [DEBUT] Mise à jour du dossier pour l'ID: ${providedId}`);
+    this.logger.debug(`📦 Payload reçu: ${JSON.stringify(dto)}`);
 
-    // 1. Recherche du candidat et de ses informations
+    // 1. Recherche du candidat avec ses relations pour le QR Code
+    this.logger.debug(`🔍 Recherche du candidat et de son dossier en base...`);
     const candidate = await this.prisma.candidate.findFirst({
       where: { OR: [{ id: providedId }, { userId: providedId }] },
-      select: { 
-        id: true, 
-        userId: true,
+      include: { 
         user: { select: { nom: true, prenom: true, telephone: true } },
+        dossier: true,
         enrollements: {
           include: { concours: true },
           take: 1,
@@ -49,14 +50,16 @@ export class DossierService {
     });
 
     if (!candidate) {
-      this.logger.error(`❌ Candidat non trouvé pour l'ID: ${providedId}`);
+      this.logger.error(`❌ [ERREUR] Candidat non trouvé pour l'ID: ${providedId}`);
       throw new NotFoundException("Profil candidat introuvable.");
     }
 
     const concoursNom = candidate.enrollements[0]?.concours?.intitule || "votre concours";
-    this.logger.log(`🔍 Candidat trouvé: ${candidate.user.prenom} ${candidate.user.nom} - Concours: ${concoursNom}`);
+    const userName = `${candidate.user.prenom} ${candidate.user.nom}`;
+    this.logger.log(`👤 Candidat identifié: ${userName} | Concours: ${concoursNom}`);
 
-    // 2. Mise à jour en Base de données
+    // 2. Mise à jour du statut du dossier en base de données
+    this.logger.debug(`💾 Sauvegarde du nouveau statut (${dto.statut}) en base de données...`);
     const updatedDossier = await this.prisma.dossier.update({
       where: { candidateId: candidate.id },
       data: {
@@ -65,55 +68,77 @@ export class DossierService {
         updatedAt: new Date() 
       },
     });
-    this.logger.log(`✅ Base de données mise à jour. Nouveau statut: ${dto.statut}`);
+    this.logger.log(`✅ Dossier mis à jour avec succès dans la table Dossier.`);
 
-    // 3. Préparation des messages personnalisés
+    // 3. Logique spécifique si le dossier est VALIDÉ (Génération du QR Code Final)
+    if (dto.statut === DocStatus.VALIDATED) {
+      this.logger.log(`⚙️ [QR-LOGIC] Statut VALIDÉ détecté. Préparation du QR Code d'examen...`);
+      
+      try {
+        // Utilisation de l'URL Ngrok configurée dans le .env
+        const validationUrl = `${process.env.BACKEND_URL}/dossiers/verify/${candidate.id}`;
+        this.logger.debug(`🔗 URL générée pour le scan: ${validationUrl}`);
+
+        // Génération de l'image QR Code en Base64
+        const qrCodeDataUrl = await QRCode.toDataURL(validationUrl);
+        this.logger.log(`🎨 Image QR Code générée (Base64 OK).`);
+
+        // Mise à jour de la table Candidate avec le QR Code
+        this.logger.debug(`💾 Enregistrement du QR Code dans la table Candidate...`);
+        await this.prisma.candidate.update({
+          where: { id: candidate.id },
+          data: { qrCode: qrCodeDataUrl }
+        });
+        this.logger.log(`✅ QR Code d'examen enregistré avec succès pour le candidat.`);
+      } catch (err) {
+        this.logger.error(`❌ [ERREUR QR-CODE] Échec lors de la génération: ${err.message}`);
+      }
+    }
+
+    // 4. Préparation et envoi des notifications
+    this.logger.log(`📢 Initialisation des notifications pour le candidat...`);
     let messageBody = "";
     let notifType: NotificationType = NotificationType.INFO;
-    const userName = `${candidate.user.prenom} ${candidate.user.nom}`;
 
     if (dto.statut === DocStatus.VALIDATED) {
       notifType = NotificationType.SUCCESS;
-      messageBody = `Félicitations ${userName} ! Votre dossier pour le concours "${concoursNom}" a été VALIDÉ. Connectez-vous pour la suite.`;
+      messageBody = `Félicitations ${userName} ! Votre dossier pour le concours "${concoursNom}" a été VALIDÉ. Votre carte d'examen est maintenant disponible.`;
     } else {
       const raison = dto.commentaire ? `Raison: ${dto.commentaire}` : "Certains documents ne sont pas conformes.";
       notifType = NotificationType.ERROR;
-      messageBody = `Bonjour ${userName}, votre dossier pour le concours "${concoursNom}" a été REJETÉ. ${raison} Veuillez vous connecter pour mettre à jour vos fichiers.`;
+      messageBody = `Bonjour ${userName}, votre dossier pour le concours "${concoursNom}" a été REJETÉ. ${raison} Veuillez modifier vos fichiers.`;
     }
 
-    // 4. Notification Dashboard
+    // A. Notification Dashboard
     try {
-      this.logger.debug(`🖥️ Tentative d'envoi notification Dashboard à l'UID: ${candidate.userId}`);
+      this.logger.debug(`🖥️ Envoi notification Dashboard à l'UID: ${candidate.userId}`);
       await this.notificationService.create({
         userId: candidate.userId,
         message: messageBody,
         type: notifType,
         isBroadcast: false
       });
-      this.logger.log(`🔔 Notification Dashboard envoyée.`);
+      this.logger.log(`🔔 Notification Dashboard transmise.`);
     } catch (e) {
-      this.logger.error(`⚠️ Erreur Notification Dashboard: ${e.message}`);
+      this.logger.error(`⚠️ [ERREUR NOTIF] Dashboard: ${e.message}`);
     }
 
-    // 5. Notification WhatsApp avec préfixe +237
+    // B. Notification WhatsApp
     if (candidate.user.telephone) {
       try {
         const rawNumber = candidate.user.telephone.replace(/\s+/g, '');
         const formattedPhone = rawNumber.startsWith('+') ? rawNumber : `+237${rawNumber}`;
+        this.logger.debug(`📱 Tentative d'envoi WhatsApp vers: ${formattedPhone}`);
         
-        this.logger.debug(`📱 Préparation envoi WhatsApp vers: ${formattedPhone}`);
-        
-        // Envoi via le service
         await this.whatsappService.sendTestMessage(formattedPhone);
-        
-        this.logger.log(`📲 Signal WhatsApp envoyé avec succès au ${formattedPhone}`);
+        this.logger.log(`📲 Signal WhatsApp envoyé avec succès.`);
       } catch (e) {
-        this.logger.error(`❌ Erreur WhatsApp (Vérifiez le numéro ou le Token): ${e.message}`);
+        this.logger.error(`❌ [ERREUR WHATSAPP]: ${e.message}`);
       }
-    } else {
-      this.logger.warn(`⚠️ Aucun numéro de téléphone trouvé pour cet utilisateur.`);
     }
 
+    this.logger.log(`🏁 [FIN] Processus updateStatus terminé pour ${userName}.`);
+    this.logger.log('--------------------------------------------------------');
     return updatedDossier;
   }
 
@@ -130,43 +155,71 @@ export class DossierService {
   }
 
   /**
-   * RÉCUPÉRATION DOSSIER
+   * RÉCUPÉRATION DOSSIER COMPLET
    */
-  async getDossier(providedId: string) {
-    const candidateId = await this.resolveCandidateId(providedId);
-    try {
-      const dossier = await this.prisma.dossier.findUnique({
-        where: { candidateId },
-        include: {
-          candidate: {
-            include: {
-              user: { select: { nom: true, prenom: true, email: true } },
-              enrollements: {
-                include: { concours: { include: { piecesDossier: true } } },
-                take: 1,
-                orderBy: { createdAt: 'desc' }
+async getDossier(providedId: string) {
+  const candidateId = await this.resolveCandidateId(providedId);
+  try {
+    const dossier = await this.prisma.dossier.findUnique({
+      where: { candidateId },
+      include: {
+        candidate: {
+          include: {
+            user: { 
+              select: { 
+                nom: true, 
+                prenom: true, 
+                email: true 
+              } 
+            },
+            // ✅ AJOUT : Récupération des spécialités avec la filière
+            specialites: {
+              include: {
+                specialite: {
+                  include: {
+                    filiere: true  // Pour récupérer l'intitulé de la filière
+                  }
+                }
               }
+            },
+            enrollements: {
+              include: { 
+                concours: { 
+                  include: { 
+                    piecesDossier: true 
+                  } 
+                } 
+              },
+              take: 1,
+              orderBy: { createdAt: 'desc' }
             }
           }
         }
-      });
-
-      if (!dossier) {
-        await this.prisma.dossier.create({ data: { candidateId, statut: DocStatus.PENDING } });
-        return this.getDossier(candidateId);
       }
+    });
 
-      const activeConcours = dossier.candidate.enrollements?.[0]?.concours || null;
-      return {
-        ...dossier,
-        concours: activeConcours,
-        piecesRequises: activeConcours?.piecesDossier || []
-      };
-    } catch (error) {
-      throw new InternalServerErrorException("Erreur lors de la récupération du dossier.");
+    if (!dossier) {
+      this.logger.warn(`⚠️ Aucun dossier trouvé pour candidateId: ${candidateId}. Création automatique...`);
+      await this.prisma.dossier.create({ 
+        data: { 
+          candidateId, 
+          statut: DocStatus.PENDING 
+        } 
+      });
+      return this.getDossier(candidateId);
     }
-  }
 
+    const activeConcours = dossier.candidate.enrollements?.[0]?.concours || null;
+    return {
+      ...dossier,
+      concours: activeConcours,
+      piecesRequises: activeConcours?.piecesDossier || []
+    };
+  } catch (error) {
+    this.logger.error(`❌ Erreur getDossier: ${error.message}`);
+    throw new InternalServerErrorException("Erreur lors de la récupération du dossier.");
+  }
+}
   /**
    * UPLOAD FICHIER (Mapping Dynamique)
    */
@@ -240,4 +293,12 @@ export class DossierService {
     }
     return 'photo' + clean.charAt(0).toUpperCase() + clean.slice(1);
   }
+  async getQrCode(userId: string) {
+  const candidate = await this.prisma.candidate.findFirst({
+    where: { userId: userId },
+    select: { qrCode: true }
+  });
+  if (!candidate) throw new NotFoundException("Candidat introuvable");
+  return { qrCode: candidate.qrCode };
+}
 }

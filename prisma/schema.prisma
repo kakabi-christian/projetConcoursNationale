@@ -172,6 +172,7 @@ model Candidate {
   nomPere         String?
   telephoneMere   String?
   nomMere         String?
+  qrCode          String?             // <--- AJOUTE CETTE LIGNE ICI
 
   // Relations
   enrollements    Enrollement[]
