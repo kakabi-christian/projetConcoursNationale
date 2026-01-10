@@ -37,18 +37,18 @@ export class CandidatesService {
 
   // --- MÉTHODE MISE À JOUR : Recherche avec filtres Filière, Spécialité & Statut Dossier ---
   // --- MÉTHODE MISE À JOUR : Ajout des filtres par Centre d'Examen et Centre de Dépôt ---
-  async findAllDetailed(query: { 
+async findAllDetailed(query: { 
     search?: string, 
     filiereId?: string, 
     specialiteId?: string, 
-    centreExamenId?: string, // Nouveau filtre
-    centreDepotId?: string,  // Nouveau filtre
+    centreExamenId?: string, 
+    centreDepotId?: string,  
     sexe?: any,
     statut?: string, 
     page?: number,
     limit?: number 
   }) {
-    this.logger.log('📥 findAllDetailed() called with enhanced filters (including centers)');
+    this.logger.log('📥 findAllDetailed() called with alphabetical sorting by name');
     const { 
       search, filiereId, specialiteId, centreExamenId, 
       centreDepotId, sexe, statut, page = 1, limit = 10 
@@ -59,7 +59,7 @@ export class CandidatesService {
 
     const andFilters: Prisma.CandidateWhereInput[] = [];
 
-    // 1. Recherche textuelle
+    // --- (Tes filtres restent identiques ici) ---
     if (search && search.trim() !== "") {
       andFilters.push({
         OR: [
@@ -71,56 +71,26 @@ export class CandidatesService {
       });
     }
 
-    // 2. Filtre par Sexe
-    if (sexe && sexe !== "") {
-      andFilters.push({ sexe });
-    }
+    if (sexe && sexe !== "") andFilters.push({ sexe });
 
-    // 3. Filtre par Statut du Dossier
     if (statut && statut !== "") {
-      andFilters.push({
-        dossier: {
-          statut: statut as DocStatus
-        }
-      });
+      andFilters.push({ dossier: { statut: statut as DocStatus } });
     }
 
-    // 4. FILTRE PAR CENTRE D'EXAMEN (Via Enrollement)
     if (centreExamenId && centreExamenId !== "") {
-      andFilters.push({
-        enrollements: {
-          some: { centreExamenId: centreExamenId }
-        }
-      });
+      andFilters.push({ enrollements: { some: { centreExamenId } } });
     }
 
-    // 5. FILTRE PAR CENTRE DE DÉPÔT (Via Enrollement)
     if (centreDepotId && centreDepotId !== "") {
-      andFilters.push({
-        enrollements: {
-          some: { centreDepotId: centreDepotId }
-        }
-      });
+      andFilters.push({ enrollements: { some: { centreDepotId } } });
     }
 
-    // 6. FILTRE PAR FILIÈRE
     if (filiereId && filiereId !== "") {
-      andFilters.push({
-        specialites: {
-          some: {
-            specialite: { filiereId: filiereId }
-          }
-        }
-      });
+      andFilters.push({ specialites: { some: { specialite: { filiereId } } } });
     }
 
-    // 7. FILTRE PAR SPÉCIALITÉ
     if (specialiteId && specialiteId !== "") {
-      andFilters.push({
-        specialites: {
-          some: { specialiteId: specialiteId }
-        }
-      });
+      andFilters.push({ specialites: { some: { specialiteId } } });
     }
 
     const where: Prisma.CandidateWhereInput = andFilters.length > 0 ? { AND: andFilters } : {};
@@ -136,11 +106,7 @@ export class CandidatesService {
               }
             },
             dossier: {
-              select: {
-                statut: true,
-                commentaire: true,
-                updatedAt: true
-              }
+              select: { statut: true, commentaire: true, updatedAt: true }
             },
             recus: {
               select: { numeroRecu: true },
@@ -163,7 +129,11 @@ export class CandidatesService {
               }
             }
           },
-          orderBy: { createdAt: 'desc' },
+          // 🚀 MODIFICATION ICI : Tri par Nom puis par Prénom
+          orderBy: [
+            { user: { nom: 'asc' } },
+            { user: { prenom: 'asc' } }
+          ],
           skip,
           take,
         }),
@@ -185,7 +155,6 @@ export class CandidatesService {
       throw error;
     }
   }
-
   // --- RÉCUPÉRER LES SPÉCIALITÉS D'UNE FILIÈRE ---
   async getSpecialitesByFiliere(filiereId: string) {
     return this.prisma.specialite.findMany({

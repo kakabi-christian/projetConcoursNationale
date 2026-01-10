@@ -3,14 +3,17 @@ import { PrismaService } from '../prisma/prisma.service';
 import { DocStatus, Prisma, NotificationType } from '@prisma/client'; 
 import { UpdateDossierStatusDto } from './dto/update-dossier-status.dto';
 import { NotificationService } from '../notification/notification.service';
+import { WhatsappService } from 'src/whatsapp/whatsapp.service';
 
 @Injectable()
 export class DossierService {
   private readonly logger = new Logger(DossierService.name);
 
+  // CORRECTION : L'injection se fait obligatoirement ici dans le constructeur
   constructor(
     private prisma: PrismaService,
-    private notificationService: NotificationService 
+    private notificationService: NotificationService,
+    private whatsappService: WhatsappService // Ajouté ici
   ) {}
 
   /**
@@ -24,84 +27,104 @@ export class DossierService {
   }
 
   /**
-   * UPDATE STATUS + NOTIFICATION (Version corrigée)
+   * UPDATE STATUS + NOTIFICATION DASHBOARD + WHATSAPP
    */
-async updateStatus(providedId: string, dto: UpdateDossierStatusDto) {
-  // 1. On récupère le dossier ET le userId associé pour garantir la réception de la notif
-  const candidate = await this.prisma.candidate.findFirst({
-    where: {
-      OR: [{ id: providedId }, { userId: providedId }]
-    },
-    select: { 
-      id: true, 
-      userId: true,
-      user: { select: { nom: true, prenom: true } } // Pour personnaliser le message
-    }   
-  });
+  async updateStatus(providedId: string, dto: UpdateDossierStatusDto) {
+    this.logger.debug(`🚀 Début updateStatus pour ID: ${providedId}`);
+    this.logger.debug(`📦 Données reçues: ${JSON.stringify(dto)}`);
 
-  if (!candidate) throw new NotFoundException("Profil candidat introuvable.");
-
-  // 2. Mise à jour du dossier en base de données
-  const updatedDossier = await this.prisma.dossier.update({
-    where: { candidateId: candidate.id },
-    data: {
-      statut: dto.statut,
-      commentaire: dto.commentaire || null,
-      updatedAt: new Date() 
-    },
-  });
-
-  // 3. Construction de messages détaillés et polis
-  let notifMessage = "";
-  let notifType: NotificationType = NotificationType.INFO;
-  const userName = `${candidate.user.prenom} ${candidate.user.nom}`;
-
-  switch (dto.statut) {
-    case DocStatus.VALIDATED:
-      notifType = NotificationType.SUCCESS;
-      notifMessage = `Bonjour ${userName}, nous avons le plaisir de vous informer que votre dossier de candidature a été examiné avec succès. Toutes vos pièces justificatives sont conformes. Votre inscription est désormais validée. Nous vous souhaitons bonne chance pour la suite du concours !`;
-      break;
-
-    case DocStatus.PENDING:
-      notifType = NotificationType.ERROR;
-      notifMessage = `Bonjour ${userName}, après examen de votre dossier, nous sommes au regret de vous informer que celui-ci a été rejeté. Motif : ${dto.commentaire || "Certains documents ne correspondent pas aux critères requis."}. Nous vous invitons à rectifier les pièces concernées et à les soumettre de nouveau dans les plus brefs délais.`;
-      break;
-
-    case DocStatus.PENDING:
-      notifType = NotificationType.WARNING;
-      notifMessage = `Bonjour ${userName}, votre dossier a été placé en attente. Nos équipes procèdent actuellement à une vérification complémentaire de vos informations. Vous recevrez une notification dès qu'une décision finale sera prise. Merci de votre patience.`;
-      break;
-
-    default:
-      notifMessage = `Le statut de votre dossier de candidature a été mis à jour : ${dto.statut}. Connectez-vous à votre espace personnel pour plus de détails.`;
-  }
-
-  // 4. Envoi effectif de la notification vers le USER_ID
-  try {
-    await this.notificationService.create({
-      userId: candidate.userId, // Identifiant de connexion du candidat
-      message: notifMessage,
-      type: notifType,
-      isBroadcast: false
+    // 1. Recherche du candidat et de ses informations
+    const candidate = await this.prisma.candidate.findFirst({
+      where: { OR: [{ id: providedId }, { userId: providedId }] },
+      select: { 
+        id: true, 
+        userId: true,
+        user: { select: { nom: true, prenom: true, telephone: true } },
+        enrollements: {
+          include: { concours: true },
+          take: 1,
+          orderBy: { createdAt: 'desc' }
+        }
+      }   
     });
-    this.logger.log(`Notification envoyée avec succès au candidat : ${userName} (UID: ${candidate.userId})`);
-  } catch (e) {
-    this.logger.error(`Échec de l'envoi de la notification : ${e.message}`);
+
+    if (!candidate) {
+      this.logger.error(`❌ Candidat non trouvé pour l'ID: ${providedId}`);
+      throw new NotFoundException("Profil candidat introuvable.");
+    }
+
+    const concoursNom = candidate.enrollements[0]?.concours?.intitule || "votre concours";
+    this.logger.log(`🔍 Candidat trouvé: ${candidate.user.prenom} ${candidate.user.nom} - Concours: ${concoursNom}`);
+
+    // 2. Mise à jour en Base de données
+    const updatedDossier = await this.prisma.dossier.update({
+      where: { candidateId: candidate.id },
+      data: {
+        statut: dto.statut,
+        commentaire: dto.commentaire || null,
+        updatedAt: new Date() 
+      },
+    });
+    this.logger.log(`✅ Base de données mise à jour. Nouveau statut: ${dto.statut}`);
+
+    // 3. Préparation des messages personnalisés
+    let messageBody = "";
+    let notifType: NotificationType = NotificationType.INFO;
+    const userName = `${candidate.user.prenom} ${candidate.user.nom}`;
+
+    if (dto.statut === DocStatus.VALIDATED) {
+      notifType = NotificationType.SUCCESS;
+      messageBody = `Félicitations ${userName} ! Votre dossier pour le concours "${concoursNom}" a été VALIDÉ. Connectez-vous pour la suite.`;
+    } else {
+      const raison = dto.commentaire ? `Raison: ${dto.commentaire}` : "Certains documents ne sont pas conformes.";
+      notifType = NotificationType.ERROR;
+      messageBody = `Bonjour ${userName}, votre dossier pour le concours "${concoursNom}" a été REJETÉ. ${raison} Veuillez vous connecter pour mettre à jour vos fichiers.`;
+    }
+
+    // 4. Notification Dashboard
+    try {
+      this.logger.debug(`🖥️ Tentative d'envoi notification Dashboard à l'UID: ${candidate.userId}`);
+      await this.notificationService.create({
+        userId: candidate.userId,
+        message: messageBody,
+        type: notifType,
+        isBroadcast: false
+      });
+      this.logger.log(`🔔 Notification Dashboard envoyée.`);
+    } catch (e) {
+      this.logger.error(`⚠️ Erreur Notification Dashboard: ${e.message}`);
+    }
+
+    // 5. Notification WhatsApp avec préfixe +237
+    if (candidate.user.telephone) {
+      try {
+        const rawNumber = candidate.user.telephone.replace(/\s+/g, '');
+        const formattedPhone = rawNumber.startsWith('+') ? rawNumber : `+237${rawNumber}`;
+        
+        this.logger.debug(`📱 Préparation envoi WhatsApp vers: ${formattedPhone}`);
+        
+        // Envoi via le service
+        await this.whatsappService.sendTestMessage(formattedPhone);
+        
+        this.logger.log(`📲 Signal WhatsApp envoyé avec succès au ${formattedPhone}`);
+      } catch (e) {
+        this.logger.error(`❌ Erreur WhatsApp (Vérifiez le numéro ou le Token): ${e.message}`);
+      }
+    } else {
+      this.logger.warn(`⚠️ Aucun numéro de téléphone trouvé pour cet utilisateur.`);
+    }
+
+    return updatedDossier;
   }
 
-  return updatedDossier;
-}
   /**
    * RÉSOLUTION D'ID
    */
   private async resolveCandidateId(id: string): Promise<string> {
     const candidate = await this.prisma.candidate.findFirst({
-      where: {
-        OR: [{ id: id }, { userId: id }]
-      },
+      where: { OR: [{ id: id }, { userId: id }] },
       select: { id: true }
     });
-
     if (!candidate) throw new NotFoundException("Profil candidat introuvable.");
     return candidate.id;
   }
@@ -129,9 +152,7 @@ async updateStatus(providedId: string, dto: UpdateDossierStatusDto) {
       });
 
       if (!dossier) {
-        await this.prisma.dossier.create({ data: { candidateId,
-            statut:DocStatus.REJECTED
-        } });
+        await this.prisma.dossier.create({ data: { candidateId, statut: DocStatus.PENDING } });
         return this.getDossier(candidateId);
       }
 

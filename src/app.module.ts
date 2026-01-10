@@ -36,6 +36,7 @@ import { StatistiqueModule } from './statistique/statistique.module';
 import { CandidatesModule } from './candidates/candidates.module';
 import { FeebacksModule } from './feebacks/feebacks.module';
 import { DossierModule } from './dossier/dossier.module';
+import { WhatsappModule } from './whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { DossierModule } from './dossier/dossier.module';
     CandidatesModule,
     FeebacksModule,
     DossierModule,
+    WhatsappModule,
   ],
   controllers: [AppController],
   providers: [
