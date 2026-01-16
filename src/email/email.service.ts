@@ -157,4 +157,66 @@ async sendAdminCredentials(to: string, nom: string, codeAdmin: string, password:
       this.logger.error(`Error in sendResetPasswordEmail: ${error.message}`);
     }
   }
+  // backend/src/email/email.service.ts
+
+// backend/src/email/email.service.ts
+
+async sendDossierStatusUpdate(to: string, userName: string, status: string, concoursNom: string, commentaire?: string) {
+  try {
+    const isValidated = status === 'VALIDATED';
+    const subject = isValidated 
+      ? `✅ Dossier Validé - Concours ${concoursNom}` 
+      : `⚠️ Action requise : Dossier Rejeté - Concours ${concoursNom}`;
+
+    const statusText = isValidated ? "VALIDÉ" : "REJETÉ";
+    const headerColor = isValidated ? "#28a745" : "#dc3545"; // Vert si OK, Rouge si Rejet
+
+    const html = `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
+        <div style="background-color: ${headerColor}; color: white; padding: 25px; text-align: center;">
+          <h1 style="margin: 0; font-size: 24px;">Mise à jour de votre dossier</h1>
+        </div>
+        
+        <div style="padding: 30px; color: #333; line-height: 1.6;">
+          <p style="font-size: 16px;">Bonjour <strong>${userName}</strong>,</p>
+          <p>L'administration a terminé l'examen de votre dossier pour le concours : <strong>${concoursNom}</strong>.</p>
+          
+          <div style="background-color: #f4f7f6; padding: 20px; border-radius: 8px; margin: 25px 0; text-align: center; border: 1px dashed ${headerColor};">
+            <p style="margin: 0; color: #666; text-transform: uppercase; font-size: 12px; font-weight: bold; letter-spacing: 1px;">Nouveau Statut</p>
+            <p style="margin: 5px 0; font-size: 22px; color: ${headerColor}; font-weight: bold;">${statusText}</p>
+          </div>
+
+          ${!isValidated && commentaire ? `
+            <div style="background-color: #fff5f5; padding: 15px; border-radius: 5px; border-left: 5px solid #dc3545; margin-bottom: 20px;">
+              <p style="margin: 0; color: #dc3545; font-weight: bold;">Motif du rejet :</p>
+              <p style="margin: 5px 0; color: #333;">${commentaire}</p>
+            </div>
+            <p>Veuillez vous connecter pour corriger vos documents afin de soumettre à nouveau votre dossier.</p>
+          ` : `
+            <p style="color: #28a745; font-weight: bold;">Félicitations ! Votre dossier est maintenant complet et validé par nos services.</p>
+          `}
+
+          <div style="text-align: center; margin-top: 35px;">
+            <a href="${this.configService.get('FRONTEND_URL') || '#'}" 
+               style="background-color: #007bff; color: white; padding: 14px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
+               Accéder à mon Dashboard
+            </a>
+          </div>
+        </div>
+
+        <div style="background-color: #f9f9f9; color: #999; padding: 15px; text-align: center; font-size: 12px; border-top: 1px solid #eeeeee;">
+          Ceci est un message automatique, merci de ne pas y répondre.
+        </div>
+      </div>
+    `;
+
+    // On utilise await pour s'assurer que l'envoi est terminé
+    await this.sendMail(to, subject, html);
+
+  } catch (error) {
+    this.logger.error(`Erreur lors de l'envoi de la mise à jour dossier: ${error.message}`);
+    // TRÈS IMPORTANT : On re-balance l'erreur pour que DossierService sache que ça a échoué
+    throw error; 
+  }
+}
 }

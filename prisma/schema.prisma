@@ -22,7 +22,12 @@ enum Region {
   SUD
   SUD_OUEST
 }
-
+enum ConcoursStatus {
+  PLANIFIE    // Le concours est créé mais les inscriptions n'ont pas encore commencé
+  OUVERT      // Inscriptions en cours
+  CLOTURE     // Inscriptions terminées (automatique ou manuel)
+  ANNULE      // Concours annulé pour cette session
+}
 enum NotificationType {
   INFO
   SUCCESS
@@ -36,6 +41,7 @@ enum DocStatus {
   PENDING    // En attente de vérification admin
   VALIDATED  // Dossier accepté
   REJECTED   // Dossier refusé (message envoyé au candidat)
+  DRAFT      // Le candidat peut modifier son dossier
 }
 
 enum StatutEcole {
@@ -267,53 +273,62 @@ model Session {
 }
 
 model Concours {
-  id        String    @id @default(uuid())
-  code      String    @unique
-  intitule  String
-  montant   Float?
+  id                    String          @id @default(uuid())
+  code                  String          @unique
+  intitule              String
+  montant               Float?
+  
+  // --- NOUVEAUX CHAMPS DE GESTION ---
+  statut                ConcoursStatus  @default(PLANIFIE)
+  dateDebutInscription  DateTime        @default(now())
+  dateFinInscription    DateTime?
+  // ----------------------------------
 
-  anneeId   String
-  annee     Annee?    @relation(fields: [anneeId], references: [id])
+  anneeId               String
+  annee                 Annee?          @relation(fields: [anneeId], references: [id])
 
-  // Relation 1:1 optionnelle avec Session
-  sessionId String?  
-  session   Session?  @relation(fields: [sessionId], references: [id])
+  sessionId             String?  
+  session               Session?        @relation(fields: [sessionId], references: [id])
+  
 
-  enrollements  Enrollement[]
-  paiements     Paiement[]
-  piecesDossier PieceDossier[]  @relation("ConcoursPieces")
+  enrollements          Enrollement[]
+  paiements             Paiement[]
+  piecesDossier         PieceDossier[]  @relation("ConcoursPieces")
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
 }
-
-
 model Enrollement {
-  id                      String              @id @default(uuid())
-  candidatId              String
-  candidat                Candidate           @relation(fields: [candidatId], references: [id])
+  id                String            @id @default(uuid())
+  candidatId        String
+  candidat          Candidate         @relation(fields: [candidatId], references: [id])
   
-  concoursId              String
-  concours                Concours            @relation(fields: [concoursId], references: [id])
+  concoursId        String
+  concours          Concours          @relation(fields: [concoursId], references: [id])
   
-  sessionId               String?
-  session                 Session?            @relation(fields: [sessionId], references: [id])
+  sessionId         String?
+  session           Session?            @relation(fields: [sessionId], references: [id])
   
-  documentId              String?             @unique
-  document                Documents?          @relation("EnrollementDocuments", fields: [documentId], references: [id])
+  documentId        String?             @unique
+  document          Documents?          @relation("EnrollementDocuments", fields: [documentId], references: [id])
     
-  paiement                Paiement?
+  paiement          Paiement?
 
-  centreExamenId          String? 
-  centreExamen            CentreExamen?       @relation(fields: [centreExamenId], references: [id])
-  centreDepotId          String? 
-  centreDepot          CentreDepot?       @relation(fields: [centreDepotId], references: [id])
+  centreExamenId    String? 
+  centreExamen      CentreExamen?       @relation(fields: [centreExamenId], references: [id])
+  
+  // --- AJOUTS POUR LE DISPATCHING ---
+  salleId           String?             // La salle affectée
+  salle             Salle?              @relation(fields: [salleId], references: [id])
+  numeroTable       Int?                // Le numéro de place dans la salle
+  // ----------------------------------
 
-  createdAt               DateTime            @default(now())
-  updatedAt               DateTime            @updatedAt
+  centreDepotId     String? 
+  centreDepot       CentreDepot?        @relation(fields: [centreDepotId], references: [id])
+
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
 }
-
-
 
 model Annee {
   id              String          @id @default(uuid())
@@ -388,12 +403,29 @@ model Niveau {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 }
-
 model Salle {
-  id              String          @id @default(uuid())
-  codeClasse      String          @unique
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id          String   @id @default(uuid())
+  codeClasse  String   @unique // Sera généré : CF100, CF101...
+  capacite    Int      @default(50)
+  
+  batimentId  String
+  batiment    Batiment @relation(fields: [batimentId], references: [id])
+
+  // --- RELATION INVERSE AJOUTÉE ---
+  // Permet de lister tous les candidats (enrollements) affectés à cette salle
+  enrollements Enrollement[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+model Batiment {
+  id          String   @id @default(uuid())
+  nom         String   @unique // ex: "Bloc Pédagogique"
+  code        String   @unique // ex: "CF", "CG"
+  salles      Salle[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Specialite {
@@ -459,7 +491,7 @@ model Dossier {
   photoRecuPaiement String?
 
   // Un seul champ statut pour tout le dossier
-  statut            DocStatus @default(PENDING)
+  statut            DocStatus @default(DRAFT)
   
   commentaire       String?
 

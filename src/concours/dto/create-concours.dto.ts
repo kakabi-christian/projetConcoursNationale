@@ -1,28 +1,57 @@
-import { IsString, IsOptional, IsUUID, IsNumber, IsArray } from 'class-validator';
+import { 
+  IsString, 
+  IsOptional, 
+  IsUUID, 
+  IsNumber, 
+  IsArray, 
+  IsEnum, 
+  IsDateString, 
+  IsNotEmpty 
+} from 'class-validator';
+
+// On définit l'enum pour le statut si tu ne l'as pas déjà exporté
+export enum ConcoursStatus {
+  PLANIFIE = 'PLANIFIE',
+  OUVERT = 'OUVERT',
+  FERME = 'FERME',
+  TERMINE = 'TERMINE'
+}
 
 export class CreateConcoursDto {
   @IsString()
-  code: string;  // code unique du concours
+  @IsNotEmpty({ message: "Le code est obligatoire" })
+  code: string;
 
   @IsString()
-  intitule: string;  // nom du concours
+  @IsNotEmpty({ message: "L'intitulé est obligatoire" })
+  intitule: string;
 
   @IsNumber()
   @IsOptional()
-  montant?: number;  // montant d'inscription éventuel
+  montant?: number;
 
-  @IsUUID()
+  @IsEnum(ConcoursStatus, { message: "Le statut doit être PLANIFIE, OUVERT, FERME ou TERMINE" })
   @IsOptional()
-  anneeId?: string;  // année académique liée, facultatif
+  statut?: ConcoursStatus;
 
-  @IsUUID()
+  @IsDateString({}, { message: "Format de date de début d'inscription invalide" })
   @IsOptional()
-  sessionId?: string;  // ID de la session liée, facultatif (relation 1:1)
+  dateDebutInscription?: string;
+
+  @IsDateString({}, { message: "Format de date de fin d'inscription invalide" })
+  @IsOptional()
+  dateFinInscription?: string;
+
+  @IsUUID("4", { message: "L'ID de l'année doit être un UUID valide" })
+  @IsNotEmpty({ message: "L'année académique est requise" })
+  anneeId: string;
+
+  @IsUUID("4", { message: "L'ID de la session doit être un UUID valide" })
+  @IsOptional()
+  sessionId?: string;
 
   @IsArray()
   @IsUUID("4", { each: true })
   @IsOptional()
-  pieceDossierIds?: string[]; // IDs des pièces de dossier à associer
+  pieceDossierIds?: string[];
 }
-// 21c2bc06-7d4f-4cd6-ab6a-6cea7e7ab20c
-// 61a1e0e2-0c81-42b2-ace4-5a27579a2791

@@ -35,9 +35,8 @@ export class CandidatesService {
     return { dateTarget: enrollment.concours.session.dateDebut };
   }
 
-  // --- MÉTHODE MISE À JOUR : Recherche avec filtres Filière, Spécialité & Statut Dossier ---
-  // --- MÉTHODE MISE À JOUR : Ajout des filtres par Centre d'Examen et Centre de Dépôt ---
-async findAllDetailed(query: { 
+  // --- RECHERCHE DÉTAILLÉE AVEC SALLES ET CENTRES ---
+  async findAllDetailed(query: { 
     search?: string, 
     filiereId?: string, 
     specialiteId?: string, 
@@ -48,7 +47,7 @@ async findAllDetailed(query: {
     page?: number,
     limit?: number 
   }) {
-    this.logger.log('📥 findAllDetailed() called with alphabetical sorting by name');
+    this.logger.log('📥 findAllDetailed() called with alphabetical sorting and room info');
     const { 
       search, filiereId, specialiteId, centreExamenId, 
       centreDepotId, sexe, statut, page = 1, limit = 10 
@@ -59,7 +58,6 @@ async findAllDetailed(query: {
 
     const andFilters: Prisma.CandidateWhereInput[] = [];
 
-    // --- (Tes filtres restent identiques ici) ---
     if (search && search.trim() !== "") {
       andFilters.push({
         OR: [
@@ -72,26 +70,11 @@ async findAllDetailed(query: {
     }
 
     if (sexe && sexe !== "") andFilters.push({ sexe });
-
-    if (statut && statut !== "") {
-      andFilters.push({ dossier: { statut: statut as DocStatus } });
-    }
-
-    if (centreExamenId && centreExamenId !== "") {
-      andFilters.push({ enrollements: { some: { centreExamenId } } });
-    }
-
-    if (centreDepotId && centreDepotId !== "") {
-      andFilters.push({ enrollements: { some: { centreDepotId } } });
-    }
-
-    if (filiereId && filiereId !== "") {
-      andFilters.push({ specialites: { some: { specialite: { filiereId } } } });
-    }
-
-    if (specialiteId && specialiteId !== "") {
-      andFilters.push({ specialites: { some: { specialiteId } } });
-    }
+    if (statut && statut !== "") andFilters.push({ dossier: { statut: statut as DocStatus } });
+    if (centreExamenId && centreExamenId !== "") andFilters.push({ enrollements: { some: { centreExamenId } } });
+    if (centreDepotId && centreDepotId !== "") andFilters.push({ enrollements: { some: { centreDepotId } } });
+    if (filiereId && filiereId !== "") andFilters.push({ specialites: { some: { specialite: { filiereId } } } });
+    if (specialiteId && specialiteId !== "") andFilters.push({ specialites: { some: { specialiteId } } });
 
     const where: Prisma.CandidateWhereInput = andFilters.length > 0 ? { AND: andFilters } : {};
 
@@ -101,35 +84,29 @@ async findAllDetailed(query: {
           where,
           include: {
             user: {
-              select: {
-                nom: true, prenom: true, telephone: true, email: true,
-              }
+              select: { nom: true, prenom: true, telephone: true, email: true }
             },
             dossier: {
               select: { statut: true, commentaire: true, updatedAt: true }
-            },
-            recus: {
-              select: { numeroRecu: true },
-              take: 1,
-              orderBy: { createdAt: 'desc' }
             },
             enrollements: {
               include: { 
                 centreExamen: true, 
                 centreDepot: true,
-                concours: true 
+                concours: true,
+                // ✅ AJOUT : On récupère la salle et le bâtiment pour le dispatching
+                salle: {
+                  include: { batiment: true }
+                }
               },
               take: 1
             },
             specialites: {
               include: {
-                specialite: {
-                  include: { filiere: true }
-                }
+                specialite: { include: { filiere: true } }
               }
             }
           },
-          // 🚀 MODIFICATION ICI : Tri par Nom puis par Prénom
           orderBy: [
             { user: { nom: 'asc' } },
             { user: { prenom: 'asc' } }
@@ -146,15 +123,14 @@ async findAllDetailed(query: {
           total,
           page: Number(page),
           lastPage: Math.ceil(total / take),
-          hasNextPage: skip + take < total,
-          hasPreviousPage: page > 1
         }
       };
     } catch (error) {
-      this.logger.error('❌ Erreur lors de la récupération des candidats filtrés', error);
+      this.logger.error('❌ Erreur lors de la récupération des candidats', error);
       throw error;
     }
   }
+
   // --- RÉCUPÉRER LES SPÉCIALITÉS D'UNE FILIÈRE ---
   async getSpecialitesByFiliere(filiereId: string) {
     return this.prisma.specialite.findMany({
@@ -169,63 +145,51 @@ async findAllDetailed(query: {
       orderBy: { intitule: 'asc' }
     });
   }
-  // --- GÉNÉRATION PDF PAGINÉ (ADMIN) ---
-  async exportToPdf(query: any) {
-    this.logger.log('📄 Génération du PDF des candidats...');
 
-    // 1. On récupère TOUS les candidats correspondants aux filtres (sans pagination skip/take)
-    // On réutilise la même logique que findAllDetailed mais pour la totalité
+  // --- GÉNÉRATION PDF AVEC INFOS DE SALLES (ADMIN) ---
+  async exportToPdf(query: any) {
+    this.logger.log('📄 Génération du PDF avec colonnes Salle/Table...');
+
     const result = await this.findAllDetailed({ ...query, page: 1, limit: 10000 });
     const candidates = result.data;
 
     const { jsPDF } = require('jspdf');
-    require('jspdf-autotable');
     const doc = new jsPDF();
 
-    // 2. Configuration du Header et du Footer (Pagination)
-    const institutionName = "ESTLC"; // À personnaliser
+    const institutionName = "ESTLC";
     const totalPagesExp = "{total_pages_count_string}";
 
     autoTable(doc, {
-      head: [['N°', 'Matricule', 'Nom', 'Prénom', 'Filière', 'Spécialité']],
-      body: candidates.map((c, index) => [
-        index + 1,
-        c.matricule || 'N/A',
-        c.user?.nom?.toUpperCase() || '',
-        c.user?.prenom || '',
-        c.specialites?.[0]?.specialite?.filiere?.intitule || 'N/A',
-        c.specialites?.[0]?.specialite?.libelle || 'N/A'
-      ]),
-      startY: 30, // Laisse de la place pour le nom de l'institution
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [41, 128, 185] }, // Bleu professionnel
-      
-      // Cette partie gère le nom de l'institution en haut et la page en bas
+      // ✅ AJOUT : Colonnes Salle et Table au lieu de Filière
+      head: [['N°', 'Matricule', 'Nom', 'Prénom', 'Salle', 'Table']],
+      body: candidates.map((c, index) => {
+        const enrollment = c.enrollements?.[0];
+        return [
+          index + 1,
+          c.matricule || 'N/A',
+          c.user?.nom?.toUpperCase() || '',
+          c.user?.prenom || '',
+          enrollment?.salle?.codeClasse || 'Non assigné',
+          enrollment?.numeroTable || '-'
+        ];
+      }),
+      startY: 30,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [41, 128, 185] },
       didDrawPage: (data) => {
-        // --- HEADER ---
         doc.setFontSize(14);
-        doc.setTextColor(40);
         doc.text(institutionName, data.settings.margin.left, 15);
         doc.setFontSize(10);
-        doc.text("Liste officielle des candidats inscrits", data.settings.margin.left, 22);
-        doc.line(data.settings.margin.left, 25, 196, 25); // Ligne de séparation
+        doc.text("Liste d'émargement des candidats par salle", data.settings.margin.left, 22);
+        doc.line(data.settings.margin.left, 25, 196, 25);
 
-        // --- FOOTER (PAGINATION) ---
         let str = "Page " + doc.internal.getNumberOfPages();
-        if (typeof doc.putTotalPages === 'function') {
-          str = str + " / " + totalPagesExp;
-        }
-        doc.setFontSize(10);
-        const pageSize = doc.internal.pageSize;
-        const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight();
-        doc.text(str, data.settings.margin.left, pageHeight - 10);
+        if (typeof doc.putTotalPages === 'function') str += " / " + totalPagesExp;
+        doc.text(str, data.settings.margin.left, doc.internal.pageSize.height - 10);
       },
     });
 
-    // Remplace le placeholder par le nombre total de pages à la fin
-    if (typeof doc.putTotalPages === 'function') {
-      doc.putTotalPages(totalPagesExp);
-    }
+    if (typeof doc.putTotalPages === 'function') doc.putTotalPages(totalPagesExp);
 
     return Buffer.from(doc.output('arraybuffer'));
   }

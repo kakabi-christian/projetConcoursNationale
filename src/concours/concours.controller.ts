@@ -22,13 +22,35 @@ import { Public } from 'src/auth/decorators/public.decorator';
 export class ConcoursController {
   constructor(private readonly concoursService: ConcoursService) {}
 
-  @Post()
-  @Permissions('creer_concours')
-  create(@Body() createConcoursDto: CreateConcoursDto) {
-    return this.concoursService.create(createConcoursDto);
+  // --- 1. ROUTES STATIQUES (SANS :id) ---
+
+  /**
+   * RÉSERVÉ AUX CANDIDATS : Liste paginée des concours actifs
+   */
+  @Get('active')
+  @Public()
+  findActive(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const p = page ? parseInt(page, 10) : 1;
+    const l = limit ? parseInt(limit, 10) : 10;
+    return this.concoursService.findActive(p, l);
   }
 
-  // --- VERSION MISE À JOUR AVEC PAGINATION ---
+  /**
+   * DROPDOWN : Retourne la liste simplifiée pour les filtres (non paginée)
+   * DOIT ÊTRE AVANT @Get(':id')
+   */
+  @Get('list')
+  @Public()
+  findAllSimple() {
+    return this.concoursService.findAllSimple();
+  }
+
+  /**
+   * ADMIN : Liste complète paginée avec recherche
+   */
   @Get()
   @Public()
   findAll(
@@ -38,14 +60,35 @@ export class ConcoursController {
   ) {
     const p = page ? parseInt(page, 10) : 1;
     const l = limit ? parseInt(limit, 10) : 10;
-    
     return this.concoursService.findAll(p, l, search);
   }
 
+  // --- 2. ROUTES AVEC PARAMÈTRES (:id) ---
+
+  /**
+   * SESSIONS : Récupère les sessions d'un concours précis
+   */
+  @Get(':id/sessions')
+  @Public()
+  findSessionsByConcours(@Param('id') id: string) {
+    return this.concoursService.findSessionsByConcours(id);
+  }
+
+  /**
+   * Détails d'un concours spécifique
+   */
   @Get(':id')
   @Public()
   findOne(@Param('id') id: string) {
     return this.concoursService.findOne(id);
+  }
+
+  // --- 3. ACTIONS DE GESTION (SÉCURISÉES) ---
+
+  @Post()
+  @Permissions('creer_concours')
+  create(@Body() createConcoursDto: CreateConcoursDto) {
+    return this.concoursService.create(createConcoursDto);
   }
 
   @Patch(':id')

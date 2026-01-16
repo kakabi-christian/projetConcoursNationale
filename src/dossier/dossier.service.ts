@@ -5,6 +5,7 @@ import { UpdateDossierStatusDto } from './dto/update-dossier-status.dto';
 import { NotificationService } from '../notification/notification.service';
 import { WhatsappService } from 'src/whatsapp/whatsapp.service';
 import * as QRCode from 'qrcode';
+import { EmailService } from 'src/email/email.service';
 
 @Injectable()
 export class DossierService {
@@ -13,7 +14,9 @@ export class DossierService {
   constructor(
     private prisma: PrismaService,
     private notificationService: NotificationService,
-    private whatsappService: WhatsappService
+    private whatsappService: WhatsappService,
+    private emailService: EmailService, // 2. Injecte le service ici
+    
   ) {}
 
   /**
@@ -29,118 +32,117 @@ export class DossierService {
   /**
    * UPDATE STATUS + GÉNÉRATION QR CODE + NOTIFICATIONS
    */
-  async updateStatus(providedId: string, dto: UpdateDossierStatusDto) {
-    this.logger.log('--------------------------------------------------------');
-    this.logger.log(`🚀 [DEBUT] Mise à jour du dossier pour l'ID: ${providedId}`);
-    this.logger.debug(`📦 Payload reçu: ${JSON.stringify(dto)}`);
+async updateStatus(providedId: string, dto: UpdateDossierStatusDto) {
+  this.logger.log('--------------------------------------------------------');
+  this.logger.log(`🚀 [DEBUT] Mise à jour du dossier pour l'ID: ${providedId}`);
+  this.logger.debug(`📦 Payload reçu: ${JSON.stringify(dto)}`);
 
-    // 1. Recherche du candidat avec ses relations pour le QR Code
-    this.logger.debug(`🔍 Recherche du candidat et de son dossier en base...`);
-    const candidate = await this.prisma.candidate.findFirst({
-      where: { OR: [{ id: providedId }, { userId: providedId }] },
-      include: { 
-        user: { select: { nom: true, prenom: true, telephone: true } },
-        dossier: true,
-        enrollements: {
-          include: { concours: true },
-          take: 1,
-          orderBy: { createdAt: 'desc' }
-        }
-      }   
-    });
-
-    if (!candidate) {
-      this.logger.error(`❌ [ERREUR] Candidat non trouvé pour l'ID: ${providedId}`);
-      throw new NotFoundException("Profil candidat introuvable.");
-    }
-
-    const concoursNom = candidate.enrollements[0]?.concours?.intitule || "votre concours";
-    const userName = `${candidate.user.prenom} ${candidate.user.nom}`;
-    this.logger.log(`👤 Candidat identifié: ${userName} | Concours: ${concoursNom}`);
-
-    // 2. Mise à jour du statut du dossier en base de données
-    this.logger.debug(`💾 Sauvegarde du nouveau statut (${dto.statut}) en base de données...`);
-    const updatedDossier = await this.prisma.dossier.update({
-      where: { candidateId: candidate.id },
-      data: {
-        statut: dto.statut,
-        commentaire: dto.commentaire || null,
-        updatedAt: new Date() 
-      },
-    });
-    this.logger.log(`✅ Dossier mis à jour avec succès dans la table Dossier.`);
-
-    // 3. Logique spécifique si le dossier est VALIDÉ (Génération du QR Code Final)
-    if (dto.statut === DocStatus.VALIDATED) {
-      this.logger.log(`⚙️ [QR-LOGIC] Statut VALIDÉ détecté. Préparation du QR Code d'examen...`);
-      
-      try {
-        // Utilisation de l'URL Ngrok configurée dans le .env
-        const validationUrl = `${process.env.BACKEND_URL}/dossiers/verify/${candidate.id}`;
-        this.logger.debug(`🔗 URL générée pour le scan: ${validationUrl}`);
-
-        // Génération de l'image QR Code en Base64
-        const qrCodeDataUrl = await QRCode.toDataURL(validationUrl);
-        this.logger.log(`🎨 Image QR Code générée (Base64 OK).`);
-
-        // Mise à jour de la table Candidate avec le QR Code
-        this.logger.debug(`💾 Enregistrement du QR Code dans la table Candidate...`);
-        await this.prisma.candidate.update({
-          where: { id: candidate.id },
-          data: { qrCode: qrCodeDataUrl }
-        });
-        this.logger.log(`✅ QR Code d'examen enregistré avec succès pour le candidat.`);
-      } catch (err) {
-        this.logger.error(`❌ [ERREUR QR-CODE] Échec lors de la génération: ${err.message}`);
+  // 1. Recherche du candidat avec email et relations
+  this.logger.debug(`🔍 Recherche du candidat et de son dossier en base...`);
+  const candidate = await this.prisma.candidate.findFirst({
+    where: { OR: [{ id: providedId }, { userId: providedId }] },
+    include: { 
+      user: { select: { nom: true, prenom: true, telephone: true, email: true } }, // ✅ Email ajouté ici
+      dossier: true,
+      enrollements: {
+        include: { concours: true },
+        take: 1,
+        orderBy: { createdAt: 'desc' }
       }
-    }
+    }   
+  });
 
-    // 4. Préparation et envoi des notifications
-    this.logger.log(`📢 Initialisation des notifications pour le candidat...`);
-    let messageBody = "";
-    let notifType: NotificationType = NotificationType.INFO;
-
-    if (dto.statut === DocStatus.VALIDATED) {
-      notifType = NotificationType.SUCCESS;
-      messageBody = `Félicitations ${userName} ! Votre dossier pour le concours "${concoursNom}" a été VALIDÉ. Votre carte d'examen est maintenant disponible.`;
-    } else {
-      const raison = dto.commentaire ? `Raison: ${dto.commentaire}` : "Certains documents ne sont pas conformes.";
-      notifType = NotificationType.ERROR;
-      messageBody = `Bonjour ${userName}, votre dossier pour le concours "${concoursNom}" a été REJETÉ. ${raison} Veuillez modifier vos fichiers.`;
-    }
-
-    // A. Notification Dashboard
-    try {
-      this.logger.debug(`🖥️ Envoi notification Dashboard à l'UID: ${candidate.userId}`);
-      await this.notificationService.create({
-        userId: candidate.userId,
-        message: messageBody,
-        type: notifType,
-        isBroadcast: false
-      });
-      this.logger.log(`🔔 Notification Dashboard transmise.`);
-    } catch (e) {
-      this.logger.error(`⚠️ [ERREUR NOTIF] Dashboard: ${e.message}`);
-    }
-
-    // B. Notification WhatsApp
-    if (candidate.user.telephone) {
-      try {
-        const rawNumber = candidate.user.telephone.replace(/\s+/g, '');
-        const formattedPhone = rawNumber.startsWith('+') ? rawNumber : `+237${rawNumber}`;
-        this.logger.debug(`📱 Tentative d'envoi WhatsApp vers: ${formattedPhone}`);
-        
-        await this.whatsappService.sendTestMessage(formattedPhone);
-        this.logger.log(`📲 Signal WhatsApp envoyé avec succès.`);
-      } catch (e) {
-        this.logger.error(`❌ [ERREUR WHATSAPP]: ${e.message}`);
-      }
-    }
-
-    this.logger.log(`🏁 [FIN] Processus updateStatus terminé pour ${userName}.`);
-    this.logger.log('--------------------------------------------------------');
-    return updatedDossier;
+  if (!candidate) {
+    this.logger.error(`❌ [ERREUR] Candidat non trouvé pour l'ID: ${providedId}`);
+    throw new NotFoundException("Profil candidat introuvable.");
   }
+
+  const concoursNom = candidate.enrollements[0]?.concours?.intitule || "votre concours";
+  const userName = `${candidate.user.prenom} ${candidate.user.nom}`;
+  const userEmail = candidate.user.email;
+  
+  this.logger.log(`👤 Candidat identifié: ${userName} | Concours: ${concoursNom}`);
+
+  // 2. Mise à jour du statut du dossier en base de données
+  this.logger.debug(`💾 Sauvegarde du nouveau statut (${dto.statut}) en base de données...`);
+  const updatedDossier = await this.prisma.dossier.update({
+    where: { candidateId: candidate.id },
+    data: {
+      statut: dto.statut,
+      commentaire: dto.commentaire || null,
+      updatedAt: new Date() 
+    },
+  });
+  this.logger.log(`✅ Dossier mis à jour avec succès dans la table Dossier.`);
+
+  // 3. Logique spécifique si le dossier est VALIDÉ (Génération du QR Code Final)
+  if (dto.statut === DocStatus.VALIDATED) {
+    this.logger.log(`⚙️ [QR-LOGIC] Statut VALIDÉ détecté. Préparation du QR Code d'examen...`);
+    
+    try {
+      const validationUrl = `${process.env.BACKEND_URL}/dossiers/verify/${candidate.id}`;
+      const qrCodeDataUrl = await QRCode.toDataURL(validationUrl);
+      
+      await this.prisma.candidate.update({
+        where: { id: candidate.id },
+        data: { qrCode: qrCodeDataUrl }
+      });
+      this.logger.log(`✅ QR Code d'examen enregistré.`);
+    } catch (err) {
+      this.logger.error(`❌ [ERREUR QR-CODE]: ${err.message}`);
+    }
+  }
+
+  // 4. Préparation et envoi des notifications
+  this.logger.log(`📢 Initialisation des notifications pour le candidat...`);
+  let messageBody = "";
+  let notifType: NotificationType = NotificationType.INFO;
+
+  if (dto.statut === DocStatus.VALIDATED) {
+    notifType = NotificationType.SUCCESS;
+    messageBody = `Félicitations ${userName} ! Votre dossier pour le concours "${concoursNom}" a été VALIDÉ. Votre carte d'examen est maintenant disponible.`;
+  } else {
+    const raison = dto.commentaire ? `Raison: ${dto.commentaire}` : "Certains documents ne sont pas conformes.";
+    notifType = NotificationType.ERROR;
+    messageBody = `Bonjour ${userName}, votre dossier pour le concours "${concoursNom}" a été REJETÉ. ${raison} Veuillez modifier vos fichiers.`;
+  }
+
+  // A. Notification Dashboard
+  try {
+    this.logger.debug(`🖥️ Envoi notification Dashboard à l'UID: ${candidate.userId}`);
+    await this.notificationService.create({
+      userId: candidate.userId,
+      message: messageBody,
+      type: notifType,
+      isBroadcast: false
+    });
+    this.logger.log(`🔔 Notification Dashboard transmise.`);
+  } catch (e) {
+    this.logger.error(`⚠️ [ERREUR NOTIF] Dashboard: ${e.message}`);
+  }
+
+  // B. Notification Email (Nouvelle intégration)
+  if (userEmail) {
+    try {
+      this.logger.debug(`📧 Envoi de l'email de notification à : ${userEmail}`);
+      await this.emailService.sendDossierStatusUpdate(
+        userEmail,
+        userName,
+        dto.statut,
+        concoursNom,
+        dto.commentaire
+      );
+      this.logger.log(`✅ Notification Email envoyée avec succès.`);
+    } catch (e) {
+      this.logger.error(`❌ [ERREUR EMAIL]: ${e.message}`);
+    }
+  }
+
+  this.logger.log(`🏁 [FIN] Processus updateStatus terminé pour ${userName}.`);
+  this.logger.log('--------------------------------------------------------');
+  
+  return updatedDossier;
+}
 
   /**
    * RÉSOLUTION D'ID
@@ -203,7 +205,7 @@ async getDossier(providedId: string) {
       await this.prisma.dossier.create({ 
         data: { 
           candidateId, 
-          statut: DocStatus.PENDING 
+          statut: DocStatus.DRAFT 
         } 
       });
       return this.getDossier(candidateId);

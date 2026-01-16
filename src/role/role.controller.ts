@@ -11,7 +11,6 @@ export class RoleController {
   constructor(private readonly roleService: RoleService) {}
 
   @Post()
-  @Permissions(UserType.SUPERADMIN)
   @Permissions('creer_role')
   @UseGuards(PermissionsGuard)
   create(@Body() dto: CreateRoleDto) {
@@ -45,7 +44,6 @@ export class RoleController {
   }
 
   @Patch(':id')
-  @Permissions(UserType.SUPERADMIN)
   @Permissions('modifier_role')
   @UseGuards(PermissionsGuard)  
   update(@Param('id') id: string, @Body() dto: UpdateRoleDto) {
@@ -53,7 +51,6 @@ export class RoleController {
   }
 
   @Delete(':id')
-  @Permissions(UserType.SUPERADMIN)
   @Permissions('supprimer_role')
   @UseGuards(PermissionsGuard)
   remove(@Param('id') id: string) {

@@ -48,16 +48,16 @@ export class CandidatesController {
   }
 
   // ======================================================
-  // 4. LISTE DÉTAILLÉE DES CANDIDATS (ADMIN) - MISE À JOUR AVEC CENTRES
+  // 4. LISTE DÉTAILLÉE DES CANDIDATS (ADMIN) - MAJ AVEC SALLES
   // ======================================================
   @Public()
   @Get('list-detailed')
-  @ApiOperation({ summary: 'Récupérer une liste détaillée avec filtres avancés (Filière, Centre, Statut)' })
+  @ApiOperation({ summary: 'Récupérer une liste détaillée avec filtres avancés et informations de salle' })
   @ApiQuery({ name: 'search', required: false, type: String })
   @ApiQuery({ name: 'filiereId', required: false, type: String })
   @ApiQuery({ name: 'specialiteId', required: false, type: String })
-  @ApiQuery({ name: 'centreExamenId', required: false, type: String }) // Nouveau filtre Swagger
-  @ApiQuery({ name: 'centreDepotId', required: false, type: String })  // Nouveau filtre Swagger
+  @ApiQuery({ name: 'centreExamenId', required: false, type: String })
+  @ApiQuery({ name: 'centreDepotId', required: false, type: String })
   @ApiQuery({ name: 'sexe', required: false, enum: ['MASCULIN', 'FEMININ'] })
   @ApiQuery({ name: 'statut', required: false, type: String })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
@@ -67,20 +67,19 @@ export class CandidatesController {
     @Query('search') search?: string,
     @Query('filiereId') filiereId?: string,
     @Query('specialiteId') specialiteId?: string,
-    @Query('centreExamenId') centreExamenId?: string, // AJOUT ICI
-    @Query('centreDepotId') centreDepotId?: string,   // AJOUT ICI
+    @Query('centreExamenId') centreExamenId?: string,
+    @Query('centreDepotId') centreDepotId?: string,
     @Query('sexe') sexe?: string,
     @Query('statut') statut?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    // Appel du service avec les nouveaux paramètres de centres
     const result = await this.candidatesService.findAllDetailed({
       search,
       filiereId,
       specialiteId,
-      centreExamenId, // TRANSMISSION AU SERVICE
-      centreDepotId,  // TRANSMISSION AU SERVICE
+      centreExamenId,
+      centreDepotId,
       sexe: sexe as any,
       statut,
       page: page ? parseInt(page) : 1,
@@ -88,7 +87,6 @@ export class CandidatesController {
     });
 
     const formattedCandidates = result.data.map(c => {
-      // On récupère le premier enrollement pour extraire les infos de centre
       const activeEnrollment = c.enrollements?.[0];
 
       return {
@@ -99,12 +97,16 @@ export class CandidatesController {
         prenom: c.user?.prenom || '',
         sexe: c.sexe,
         dossier: c.dossier,
-        // Informations de localisation et centres
         filiere: c.specialites?.[0]?.specialite?.filiere?.intitule || 'N/A',
         specialite: c.specialites?.[0]?.specialite?.libelle || 'N/A',
         centreExamen: activeEnrollment?.centreExamen?.intitule || 'Non défini',
         centreDepot: activeEnrollment?.centreDepot?.intitule || 'Non défini',
-        concours: activeEnrollment?.concours?.intitule || 'N/A'
+        concours: activeEnrollment?.concours?.intitule || 'N/A',
+        
+        // --- NOUVELLES DONNÉES DE DISPATCHING ---
+        salle: activeEnrollment?.salle?.codeClasse || 'Non assigné',
+        batiment: activeEnrollment?.salle?.batiment?.nom || 'N/A',
+        numeroTable: activeEnrollment?.numeroTable || '-'
       };
     });
 
@@ -121,7 +123,6 @@ export class CandidatesController {
   @Get('export/pdf')
   @ApiOperation({ summary: 'Exporter la liste filtrée en format PDF' })
   async downloadPdf(@Query() query: any, @Res() res: any) {
-    // L'objet query contient déjà centreExamenId, filiereId, etc.
     const buffer = await this.candidatesService.exportToPdf(query);
     
     res.set({
