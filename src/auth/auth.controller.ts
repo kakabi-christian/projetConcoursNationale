@@ -6,10 +6,12 @@ import {
   Post,
   Get,
   UseGuards,
-  Query,           // AJOUTÉ
+  Query,
   ParseIntPipe,
   Patch,
-  Delete,    // AJOUTÉ
+  Delete,
+  Req,
+  Res, // AJOUTÉ pour Google
 } from '@nestjs/common';
 import { 
   ApiTags, 
@@ -17,8 +19,9 @@ import {
   ApiResponse, 
   ApiBody, 
   ApiParam,
-  ApiQuery         // AJOUTÉ pour Swagger
+  ApiQuery 
 } from '@nestjs/swagger'; 
+import { AuthGuard } from '@nestjs/passport'; // AJOUTÉ pour Google
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { Public } from './decorators/public.decorator';
@@ -32,12 +35,39 @@ import { PermissionsGuard } from './guards/permissions.guard';
 
 import { UserType } from '@prisma/client';
 import { UserTypes } from './decorators/user-types.decorator';
-import { Permissions } from 'src/auth/decorators/permissions.decorator'
+import { Permissions } from 'src/auth/decorators/permissions.decorator';
 
 @ApiTags('Authentification & Inscription')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  // ==================== AUTHENTIFICATION GOOGLE ====================
+
+  @Get('google')
+  @Public()
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Redirection vers la fenêtre de connexion Google' })
+  async googleAuth(@Req() req) {
+    // Cette route déclenche la redirection vers Google
+  }
+
+@Get('google/callback')
+@Public()
+@UseGuards(AuthGuard('google'))
+async googleAuthRedirect(@Req() req, @Res() res) {
+  const result = await this.authService.googleLogin(req);
+  
+  const token = result.access_token;
+  const registrationStep = result.registrationStep;
+  const candidateId = result.user.candidateId || '';
+
+  // On redirige vers la home du candidat
+  // On passe le token et les infos essentielles dans l'URL pour que React les stocke
+  return res.redirect(
+    `http://localhost:3001/candidat/home?token=${token}&step=${registrationStep}&candidateId=${candidateId}`
+  );
+}
 
   // ==================== LISTER LES ADMINS (PAGINATION) ====================
   @Get('admins')
@@ -62,7 +92,7 @@ export class AuthController {
     return this.authService.registerAdmin(dto);
   }
 
-  // ==================== LOGIN ====================
+  // ==================== LOGIN CLASSIQUE ====================
   @Post('login')
   @Public()
   @ApiOperation({ summary: 'Connexion hybride (Admin via Password ou Candidat via Reçu)' })
@@ -77,20 +107,15 @@ export class AuthController {
     }
   })
   @ApiResponse({ status: 200, description: 'Connexion réussie, retourne le JWT.' })
-  @ApiResponse({ status: 401, description: 'Identifiants invalides.' })
   async login(@Body() dto: LoginDto & { userType: 'ADMIN' | 'CANDIDATE' }) {
     const { userType } = dto;
-
     if (!userType) {
-      throw new BadRequestException(
-        'Le type d’utilisateur est requis (ADMIN ou CANDIDATE).',
-      );
+      throw new BadRequestException('Le type d’utilisateur est requis (ADMIN ou CANDIDATE).');
     }
-
     return this.authService.login(dto, userType);
   }
 
-  // ==================== REGISTER CANDIDATE STEP 1 ====================
+  // ==================== REGISTER CANDIDATE STEPS ====================
   @Post('register-candidate-step1')
   @Public()
   @ApiOperation({ summary: 'Inscription Étape 1 : Création du compte utilisateur' })
@@ -98,7 +123,6 @@ export class AuthController {
     return this.authService.registerCandidateStep1(dto);
   }
 
-  // ==================== REGISTER CANDIDATE STEP 2 ====================
   @Post('register-candidate-step2')
   @Public()
   @ApiOperation({ summary: 'Inscription Étape 2 : Profil civil et spécialité' })
@@ -106,7 +130,6 @@ export class AuthController {
     return this.authService.registerCandidateStep2(dto);
   }
 
-  // ==================== REGISTER CANDIDATE STEP 3 ====================
   @Post('register-candidate-step3')
   @Public()
   @ApiOperation({ summary: 'Inscription Étape 3 : Informations académiques (BAC)' })
@@ -114,7 +137,6 @@ export class AuthController {
     return this.authService.registerCandidateStep3(dto);
   }
 
-  // ==================== REGISTER CANDIDATE STEP 4 ====================
   @Post('register-candidate-step4')
   @Public()
   @ApiOperation({ summary: 'Inscription Étape 4 : Choix des centres et finalisation' })
@@ -122,27 +144,37 @@ export class AuthController {
     return this.authService.registerCandidateStep4(dto.candidateId, dto);
   }
 
-  // ==================== GET CANDIDATE INFO ====================
+  // ==================== GESTION ADMINS & INFO ====================
   @Get('candidate-info/:id')
   @Public()
   @ApiOperation({ summary: 'Récupérer le récapitulatif complet d\'un candidat' })
-  @ApiParam({ name: 'id', description: 'ID du candidat' })
   async getCandidateInfo(@Param('id') candidateId: string) {
     return this.authService.getCandidateInfo(candidateId);
   }
-  @Patch('admins/:id')
-@UserTypes(UserType.SUPERADMIN)
-@Permissions('modifier_administrateur')
-@UseGuards(UserTypeGuard, PermissionsGuard)
-updateAdmin(@Param('id') id: string, @Body() dto: Partial<RegisterAdminDto>) {
-  return this.authService.updateAdmin(id, dto);
-}
 
-@Delete('admins/:id')
-@UserTypes(UserType.SUPERADMIN)
-@Permissions('supprimer_administrateur')
-@UseGuards(UserTypeGuard, PermissionsGuard)
-deleteAdmin(@Param('id') id: string) {
-  return this.authService.deleteAdmin(id);
-}
+  @Patch('admins/:id')
+  @UserTypes(UserType.SUPERADMIN)
+  @Permissions('modifier_administrateur')
+  @UseGuards(UserTypeGuard, PermissionsGuard)
+  updateAdmin(@Param('id') id: string, @Body() dto: Partial<RegisterAdminDto>) {
+    return this.authService.updateAdmin(id, dto);
+  }
+
+  @Delete('admins/:id')
+  @UserTypes(UserType.SUPERADMIN)
+  @Permissions('supprimer_administrateur')
+  @UseGuards(UserTypeGuard, PermissionsGuard)
+  deleteAdmin(@Param('id') id: string) {
+    return this.authService.deleteAdmin(id);
+  }
+  // ==================== RÉCUPÉRATION DU PROFIL (PONT GOOGLE/DASHBOARD) ====================
+
+  @Get('profile')
+  @ApiOperation({ summary: 'Récupère les infos de l’utilisateur connecté à partir du token JWT' })
+  @ApiResponse({ status: 200, description: 'Profil utilisateur récupéré.' })
+  async getProfile(@Req() req) {
+    // Si tu utilises un JwtStrategy standard, Passport attache l'user à req.user
+    // C'est ici que React récupère l'ID pour charger le dashboard
+    return req.user;
+  }
 }

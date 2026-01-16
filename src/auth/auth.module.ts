@@ -5,21 +5,17 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
+import { GoogleStrategy } from './google.strategy'; // 👈 AJOUT ICI
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailService } from 'src/email/email.service';
-import { NotificationModule } from 'src/notification/notification.module';
 import { NotificationService } from 'src/notification/notification.service';
+
 @Module({
   imports: [
-    // Module Prisma pour accéder à la BD
     PrismaModule,
-        
-    // Module Passport pour l'authentification
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    
-    // Module JWT avec configuration dynamique
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -35,6 +31,7 @@ import { NotificationService } from 'src/notification/notification.service';
   providers: [
     AuthService,
     JwtStrategy,
+    GoogleStrategy, // 👈 AJOUT ICI
     JwtAuthGuard,
     RolesGuard,
     EmailService,

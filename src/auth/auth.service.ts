@@ -707,6 +707,61 @@ async getCandidateInfo(candidateId: string) {
   };
 }
 
+// ==================== GOOGLE LOGIN LOGIC ====================
+async googleLogin(req) {
+  if (!req.user) {
+    throw new BadRequestException('Aucun utilisateur trouvé via Google');
+  }
+
+  const { email, firstName, lastName, picture } = req.user;
+
+  // 1. Chercher si l'utilisateur existe déjà
+  let user = await this.prisma.user.findUnique({
+    where: { email },
+    include: { candidate: true }
+  });
+
+  // 2. Si l'utilisateur n'existe pas, on le crée automatiquement
+  if (!user) {
+    user = await this.prisma.user.create({
+      data: {
+        email,
+        nom: lastName || '',
+        prenom: firstName || '',
+        userType: 'CANDIDATE', // Par défaut, un login Google crée un profil Candidat
+        isVerified: true,      // Email déjà vérifié par Google
+        // On ne met pas de mot de passe car c'est un login social
+      },
+      include: { candidate: true }
+    });
+  }
+
+  // 3. Calculer l'étape de progression (étape 1 finie car compte créé)
+  const registrationStep = await this.checkCandidateProgress(user.id);
+
+  // 4. Générer le token JWT (comme pour le login classique)
+  const payload = {
+    sub: user.id,
+    email: user.email,
+    userType: user.userType,
+    candidateId: user.candidate?.id || null,
+    registrationStep,
+  };
+
+  return {
+    access_token: await this.jwtService.signAsync(payload),
+    user: {
+      id: user.id,
+      email: user.email,
+      nom: user.nom,
+      prenom: user.prenom,
+      userType: user.userType,
+      candidateId: user.candidate?.id || null,
+      picture: picture // On peut renvoyer la photo Google au front
+    },
+    registrationStep,
+  };
+}
 
   
    
