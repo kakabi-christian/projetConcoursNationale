@@ -762,7 +762,59 @@ async googleLogin(req) {
     registrationStep,
   };
 }
+async githubLogin(req) {
+  if (!req.user) {
+    throw new BadRequestException('Aucun utilisateur trouvé via GitHub');
+  }
 
+  const { email, nom, photo } = req.user;
+
+  // 1. Chercher l'utilisateur avec son candidat inclus
+  let user = await this.prisma.user.findUnique({
+    where: { email },
+    include: { candidate: true }
+  });
+
+  // 2. Si l'utilisateur n'existe pas, on le crée
+  if (!user) {
+    user = await this.prisma.user.create({
+      data: {
+        email,
+        nom: nom || '',
+        prenom: '', 
+        image: photo,
+        userType: 'CANDIDATE',
+        isVerified: true,
+      },
+      include: { candidate: true }
+    });
+  }
+
+  // 3. Calculer l'étape de progression (Utilise ta fonction existante)
+  const registrationStep = await this.checkCandidateProgress(user.id);
+
+  // 4. Générer le JWT avec le payload complet
+  const payload = { 
+    sub: user.id, 
+    email: user.email, 
+    userType: user.userType,
+    candidateId: user.candidate?.id || null,
+    registrationStep 
+  };
+  
+  const token = await this.jwtService.signAsync(payload);
+
+  return {
+    access_token: token,
+    registrationStep,
+    user: {
+      id: user.id,
+      email: user.email,
+      nom: user.nom,
+      candidateId: user.candidate?.id || null
+    }
+  };
+}
   
    
 }

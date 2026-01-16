@@ -69,6 +69,33 @@ async googleAuthRedirect(@Req() req, @Res() res) {
   );
 }
 
+// ==================== AUTHENTIFICATION GITHUB ====================
+
+  @Get('github')
+  @Public()
+  @UseGuards(AuthGuard('github'))
+  @ApiOperation({ summary: 'Redirection vers la fenêtre de connexion GitHub' })
+  async githubAuth(@Req() req) {
+    // Déclenche la redirection vers GitHub
+  }
+
+  @Get('github/callback')
+  @Public()
+  @UseGuards(AuthGuard('github'))
+  async githubAuthRedirect(@Req() req, @Res() res) {
+    // Appel d'une méthode githubLogin dans ton service
+    const result = await this.authService.githubLogin(req);
+    
+    const token = result.access_token;
+    const registrationStep = result.registrationStep;
+    const candidateId = result.user.candidateId || '';
+
+    // Redirection vers ton Frontend (ajuste le port 3001 si nécessaire)
+    return res.redirect(
+      `http://localhost:3001/candidat/home?token=${token}&step=${registrationStep}&candidateId=${candidateId}`
+    );
+  }
+
   // ==================== LISTER LES ADMINS (PAGINATION) ====================
   @Get('admins')
   @ApiOperation({ summary: 'Récupérer la liste paginée des administrateurs' })

@@ -80,6 +80,7 @@ model User {
   password        String?
   nom             String?
   prenom          String?
+  image      String?  // <--- AJOUTE CETTE LIGNE ICI pour stocker l'URL de la photo
   telephone       String?
   isVerified      Boolean         @default(true)
   region          Region?

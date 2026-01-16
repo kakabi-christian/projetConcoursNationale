@@ -5,7 +5,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
-import { GoogleStrategy } from './google.strategy'; // 👈 AJOUT ICI
+import { GoogleStrategy } from './google.strategy'; 
+import { GithubStrategy } from './github.strategy'; // 👈 AJOUT ICI
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -31,7 +32,8 @@ import { NotificationService } from 'src/notification/notification.service';
   providers: [
     AuthService,
     JwtStrategy,
-    GoogleStrategy, // 👈 AJOUT ICI
+    GoogleStrategy, 
+    GithubStrategy, // 👈 AJOUT ICI pour activer GitHub
     JwtAuthGuard,
     RolesGuard,
     EmailService,
@@ -46,3 +48,4 @@ import { NotificationService } from 'src/notification/notification.service';
   ],
 })
 export class AuthModule {}
+

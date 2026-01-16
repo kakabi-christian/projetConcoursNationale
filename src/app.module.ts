@@ -40,6 +40,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { BatimentModule } from './batiment/batiment.module';
 import { SalleModule } from './salle/salle.module';
 import { DispatchModule } from './dispatch/dispatch.module';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -88,6 +89,7 @@ import { DispatchModule } from './dispatch/dispatch.module';
     BatimentModule,
     SalleModule,
     DispatchModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [
