@@ -1,5 +1,5 @@
 // src/paiement/paiement.controller.ts
-import { Controller, Post, Body, Get, Param, Res, NotFoundException } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Res, NotFoundException, Query } from '@nestjs/common';
 import { PaiementService } from './paiement.service';
 import { CreatePaiementDto } from './dto/create-paiement.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
@@ -11,28 +11,41 @@ import type { Response } from 'express';
 export class PaiementController {
   constructor(private readonly paiementService: PaiementService) {}
 
-  // Créer un paiement et générer le reçu avec QR Code
+  /**
+   * 1. INITIER LE PAIEMENT (Collecte via Campay)
+   */
   @Post()
   @Public()
   async create(@Body() createPaiementDto: CreatePaiementDto) {
+    // Cette méthode déclenche le push OTP et crée le paiement en statut PENDING
     return this.paiementService.createPaiement(createPaiementDto);
   }
 
-  // 🔐 ÉTAPE 1 : Demander un code OTP (J'ai oublié mon reçu)
-  @Post('recu/request-otp')
+  /**
+   * 2. VÉRIFIER LE STATUT DU REÇU (Polling)
+   * Le frontend appelle cette route toutes les 3 secondes pour savoir si le reçu est prêt.
+   */
+  @Get('check-status/:externalReference')
   @Public()
-  async requestOtp(@Body() requestOtpDto: RequestOtpDto) {
-    return this.paiementService.requestOtp(requestOtpDto);
+  async checkStatus(@Param('externalReference') externalReference: string) {
+    const recu = await this.paiementService.getRecuByExternalRef(externalReference);
+    
+    if (!recu) {
+      return { 
+        status: 'PENDING', 
+        message: 'Paiement en cours de validation sur le mobile...' 
+      };
+    }
+
+    return { 
+      status: 'SUCCESSFUL', 
+      recu 
+    };
   }
 
-  // 🔐 ÉTAPE 2 : Vérifier l'OTP et récupérer le reçu
-  @Post('recu/verify-otp')
-  @Public()
-  async verifyOtpAndGetRecu(@Body() verifyOtpDto: VerifyOtpDto) {
-    return this.paiementService.verifyOtpAndGetRecu(verifyOtpDto);
-  }
-
-  // 📄 Endpoint pour générer et afficher le PDF à partir du numéro de transaction
+  /**
+   * 3. GÉNÉRER LE PDF DU REÇU
+   */
   @Get('recu/:numeroTransaction/pdf')
   @Public()
   async getRecuPdf(@Param('numeroTransaction') numeroTransaction: string, @Res() res: Response) {
@@ -41,18 +54,37 @@ export class PaiementController {
       throw new NotFoundException('Reçu introuvable');
     }
 
-    // Générer et envoyer le PDF directement dans la réponse
     this.paiementService.generatePdf(recuData, res);
   }
 
-  // Vérifier un reçu pour l’inscription
+  /**
+   * 4. GESTION DES REÇUS OUBLIÉS (OTP)
+   */
+  @Post('recu/request-otp')
+  @Public()
+  async requestOtp(@Body() requestOtpDto: RequestOtpDto) {
+    return this.paiementService.requestOtp(requestOtpDto);
+  }
+
+  @Post('recu/verify-otp')
+  @Public()
+  async verifyOtpAndGetRecu(@Body() verifyOtpDto: VerifyOtpDto) {
+    return this.paiementService.verifyOtpAndGetRecu(verifyOtpDto);
+  }
+  
+
+  /**
+   * 5. VÉRIFICATION POUR INSCRIPTION
+   */
   @Post('inscription/verify-recu')
   @Public()
   async verifyRecuForRegistration(@Body() verifyRecuDto: { numeroRecu: string }) {
     return this.paiementService.verifyRecuForRegistration(verifyRecuDto.numeroRecu);
   }
 
-  // 🔹 Nouvel endpoint : récupérer les infos d’un paiement par numéro de reçu
+  /**
+   * 6. INFOS PAIEMENT PAR REÇU
+   */
   @Get('recu/:numeroRecu/info')
   @Public()
   async getPaiementInfo(@Param('numeroRecu') numeroRecu: string) {

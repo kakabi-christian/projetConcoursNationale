@@ -97,6 +97,54 @@ model User {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 }
+// 1. Représente une discussion entre deux ou plusieurs admins
+model Conversation {
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  // Relation vers les messages
+  messages  ChatMessage[]
+  
+  // Relation vers les participants (Admins uniquement)
+  participants AdminConversation[]
+}
+
+// 2. Table de liaison pour savoir quels admins sont dans quelle conversation
+model AdminConversation {
+  id             String       @id @default(uuid())
+  adminId        String
+  conversationId String
+  
+  admin          Admin        @relation(fields: [adminId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+
+  @@unique([adminId, conversationId])
+}
+
+// 3. Le message en lui-même
+model ChatMessage {
+  id             String       @id @default(uuid())
+  content        String       @db.Text
+  senderId       String       // ID de l'Admin qui envoie
+  conversationId String
+  isRead         Boolean      @default(false)
+  isEdited    Boolean   @default(false)
+  isDeleted   Boolean   @default(false) // On fait un "soft delete" pour garder la trace
+  isPinned    Boolean   @default(false)
+  pinnedUntil DateTime? // Pour gérer les 3j, 7j, 30j
+  replyToId      String?      // ID du message auquel on répond
+  replyTo        ChatMessage? @relation("ReplyTo", fields: [replyToId], references: [id])
+  replies        ChatMessage[] @relation("ReplyTo")
+  
+  // Pour le transfert
+  isForwarded Boolean   @default(false)
+  
+  createdAt      DateTime     @default(now())
+
+  sender         Admin        @relation(fields: [senderId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+}
 
 
 model Role {
@@ -153,6 +201,8 @@ model Admin {
   userId          String          @unique
   codeAdmin       String?        
   departementId   String?
+  conversations   AdminConversation[]
+  sentMessages    ChatMessage[]
 
   user            User            @relation(fields: [userId], references: [id])
   departement     Departement?    @relation(fields: [departementId], references: [id])
@@ -253,6 +303,7 @@ model Paiement {
 
   // 🔹 Relation avec le reçu
   recu              Recu?       // relation inverse (1:1)
+  external_reference String?    @unique // Ajoute @unique ici si possible pour des recherches rapides
 
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt

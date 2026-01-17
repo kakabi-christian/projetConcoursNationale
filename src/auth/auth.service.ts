@@ -588,6 +588,7 @@ async login(
     user: {
       ...user,                  // On déverse les infos de l'entité User (nom, email, etc.)
       candidateId: paiement.candidatId // On injecte l'ID du profil Candidat
+      
     }, 
     registrationStep 
   };

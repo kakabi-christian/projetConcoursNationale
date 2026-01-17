@@ -41,6 +41,8 @@ import { BatimentModule } from './batiment/batiment.module';
 import { SalleModule } from './salle/salle.module';
 import { DispatchModule } from './dispatch/dispatch.module';
 import { AiModule } from './ai/ai.module';
+import { ChatModule } from './chat/chat.module';
+import { CampayModule } from './campay/campay.module';
 
 @Module({
   imports: [
@@ -90,6 +92,8 @@ import { AiModule } from './ai/ai.module';
     SalleModule,
     DispatchModule,
     AiModule,
+    ChatModule,
+    CampayModule,
   ],
   controllers: [AppController],
   providers: [
@@ -99,6 +103,7 @@ import { AiModule } from './ai/ai.module';
       useClass: JwtAuthGuard,
     },
     CentreDepotService,
+    
   ],
 })
 export class AppModule {}
