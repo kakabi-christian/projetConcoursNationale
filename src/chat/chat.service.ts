@@ -335,4 +335,101 @@ export class ChatService {
       }
     });
   }
+
+
+  /**
+   * 🔹 11. Récupérer le nombre total de messages non lus pour un Admin
+   * Utile pour le badge de notification dans la Sidebar
+   */
+  async getUnreadMessagesCount(adminId: string) {
+    this.logger.log(`🔔 [getUnreadMessagesCount] Calcul pour adminId: "${adminId}"`);
+
+    if (!adminId || adminId === 'undefined') {
+      return { unreadCount: 0 };
+    }
+
+    try {
+      const count = await this.prisma.chatMessage.count({
+        where: {
+          conversation: {
+            participants: {
+              some: { adminId },
+            },
+          },
+          senderId: { not: adminId }, // On ne compte pas ses propres messages
+          isRead: false,
+          isDeleted: false, // On ne compte pas les messages supprimés
+        },
+      });
+
+      this.logger.debug(`✅ [getUnreadMessagesCount] ${count} messages non lus trouvés.`);
+      return { unreadCount: count };
+    } catch (error) {
+      this.logger.error(`💥 [getUnreadMessagesCount] Erreur: ${error.message}`);
+      throw error;
+    }
+  }
+  /**
+   * 🔹 Récupère le détail des messages non lus par Admin (Expéditeur)
+   * Exemple de retour : [{ senderName: "Angela", count: 12, conversationId: "..." }, ...]
+   */
+  async getUnreadDetailByAdmin(adminId: string) {
+    this.logger.log(`📊 [getUnreadDetailByAdmin] Détail pour adminId: "${adminId}"`);
+
+    if (!adminId || adminId === 'undefined') {
+      return [];
+    }
+
+    try {
+      const details = await this.prisma.conversation.findMany({
+        where: {
+          participants: { some: { adminId } },
+          messages: {
+            some: {
+              senderId: { not: adminId },
+              isRead: false,
+              isDeleted: false,
+            },
+          },
+        },
+        select: {
+          id: true,
+          participants: {
+            where: { adminId: { not: adminId } }, // On récupère l'autre participant (l'expéditeur)
+            select: {
+              admin: {
+                select: {
+                  user: { select: { nom: true, prenom: true } },
+                },
+              },
+            },
+          },
+          _count: {
+            select: {
+              messages: {
+                where: {
+                  senderId: { not: adminId },
+                  isRead: false,
+                  isDeleted: false,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      // Formatage pour le frontend
+      return details.map((conv) => ({
+        conversationId: conv.id,
+        count: conv._count.messages,
+        senderName: conv.participants[0]?.admin?.user 
+          ? `${conv.participants[0].admin.user.nom} ${conv.participants[0].admin.user.prenom || ''}`.trim()
+          : 'Utilisateur inconnu',
+      }));
+    } catch (error) {
+      this.logger.error(`💥 [getUnreadDetailByAdmin] Erreur: ${error.message}`);
+      throw error;
+    }
+  }
+  
 }

@@ -59,6 +59,12 @@ export class ChatController {
     const adminId = await this.getAdminIdFromUser(req);
     return this.chatService.getUserConversations(adminId);
   }
+  @Get('unread-count')
+  async getMyUnreadCount(@Req() req) {
+    // On extrait l'adminId dynamiquement à partir du token de la requête
+    const adminId = await this.getAdminIdFromUser(req);
+    return this.chatService.getUnreadMessagesCount(adminId);
+  }
 
   @Get('messages/:conversationId')
   async getConversationMessages(@Param('conversationId') conversationId: string) {
@@ -148,4 +154,14 @@ export class ChatController {
   async getPinned(@Param('conversationId') conversationId: string) {
     return this.chatService.getPinnedMessages(conversationId);
   }
+  /**
+   * 📊 Récupérer le détail des messages non lus par administrateur
+   * Retourne la liste des expéditeurs avec leur nombre de messages non lus respectifs
+   */
+  @Get('unread-details')
+  async getMyUnreadDetails(@Req() req) {
+    const adminId = await this.getAdminIdFromUser(req);
+    return this.chatService.getUnreadDetailByAdmin(adminId);
+  }
+
 }

@@ -11,7 +11,8 @@ import {
   Patch,
   Delete,
   Req,
-  Res, // AJOUTÉ pour Google
+  Res,
+  UnauthorizedException, // AJOUTÉ pour Google
 } from '@nestjs/common';
 import { 
   ApiTags, 
@@ -19,7 +20,8 @@ import {
   ApiResponse, 
   ApiBody, 
   ApiParam,
-  ApiQuery 
+  ApiQuery, 
+  ApiBearerAuth
 } from '@nestjs/swagger'; 
 import { AuthGuard } from '@nestjs/passport'; // AJOUTÉ pour Google
 import { AuthService } from './auth.service';
@@ -41,6 +43,26 @@ import { Permissions } from 'src/auth/decorators/permissions.decorator';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+  // ==================== CHANGEMENT DE MOT DE PASSE ====================
+
+  @Post('change-password')
+// Ne pas mettre @Public() ici, car on a besoin du token
+async changePassword(@Req() req, @Body() body: any) {
+  // 1. Log de debug crucial
+  console.log('=== DEBUG AUTH ===');
+  console.log('User object from Request:', req.user);
+
+  // 2. Extraction flexible de l'ID
+  const userId = req.user?.sub || req.user?.id || req.user?.userId;
+
+  if (!userId) {
+    console.error('ERREUR: Aucun ID trouvé dans req.user');
+    throw new UnauthorizedException("Impossible d'identifier l'utilisateur à partir du token.");
+  }
+
+  const { oldPassword, newPassword } = body;
+  return this.authService.changePassword(userId, oldPassword, newPassword);
+}
 
   // ==================== AUTHENTIFICATION GOOGLE ====================
 
@@ -204,4 +226,6 @@ async googleAuthRedirect(@Req() req, @Res() res) {
     // C'est ici que React récupère l'ID pour charger le dashboard
     return req.user;
   }
+  
+  
 }

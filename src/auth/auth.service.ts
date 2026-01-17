@@ -112,6 +112,55 @@ async registerAdmin(dto: RegisterAdminDto) {
     throw error;
   }
 }
+
+/**
+ * 🔹 Change le mot de passe d'un utilisateur (Admin ou Candidat)
+ * @param userId ID de l'utilisateur (extrait du JWT)
+ * @param oldPassword L'ancien mot de passe saisi
+ * @param newPassword Le nouveau mot de passe
+ */
+async changePassword(userId: string, oldPassword: string, newPassword: string) {
+  // 1. Récupérer l'utilisateur
+  const user = await this.prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new NotFoundException("Utilisateur non trouvé.");
+  }
+
+  // 2. Vérifier si l'utilisateur a un mot de passe (cas des logins sociaux sans password)
+  if (!user.password) {
+    throw new BadRequestException(
+      "Ce compte utilise une connexion sociale. Veuillez définir un mot de passe via 'Mot de passe oublié'.",
+    );
+  }
+
+  // 3. Comparer l'ancien mot de passe avec le hash en base
+  const isOldPasswordCorrect = await bcrypt.compare(oldPassword, user.password);
+  if (!isOldPasswordCorrect) {
+    throw new UnauthorizedException("L'ancien mot de passe est incorrect.");
+  }
+
+  // 4. Vérifier que le nouveau mot de passe est différent de l'ancien
+  const isSamePassword = await bcrypt.compare(newPassword, user.password);
+  if (isSamePassword) {
+    throw new BadRequestException(
+      "Le nouveau mot de passe doit être différent de l'ancien.",
+    );
+  }
+
+  // 5. Hacher le nouveau mot de passe
+  const hashedNewPassword = await this.hashPassword(newPassword);
+
+  // 6. Mettre à jour en base de données
+  await this.prisma.user.update({
+    where: { id: userId },
+    data: { password: hashedNewPassword },
+  });
+
+  return { message: "Votre mot de passe a été modifié avec succès." };
+}
 /**
  * Vérifie la progression de l'inscription d'un candidat
  * @returns 0 si terminé, sinon le numéro de l'étape à remplir
