@@ -1,8 +1,9 @@
-// src/campay/campay.service.ts
-import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, Logger, HttpException, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
+import { PrismaService } from '../prisma/prisma.service'; 
+import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
 
 @Injectable()
@@ -13,8 +14,11 @@ export class CampayService {
   private readonly webhookKey: string;
   private readonly adminPhoneNumber: string;
 
-  constructor(private configService: ConfigService) {
-    // Récupération des variables d'environnement
+  constructor(
+    // 💡 L'injection correcte se fait ici dans le constructeur
+    private readonly prisma: PrismaService, 
+    private readonly configService: ConfigService
+  ) {
     this.baseUrl = this.configService.get<string>('CAMPAY_BASE_URL') || 'https://demo.campay.net/api';
     this.token = this.configService.get<string>('CAMPAY_TOKEN') || '';
     this.webhookKey = this.configService.get<string>('CAMPAY_WEBHOOK_KEY') || '';
@@ -26,14 +30,79 @@ export class CampayService {
   }
 
   /**
-   * 🔹 COLLECT : Mobile Money (Client) -> Ta balance Campay
-   * Cette méthode déclenche le push USSD/OTP sur le téléphone du client.
+   * 🔹 WITHDRAW : Balance Campay -> Numéro Admin (Payout)
+   */
+  async withdraw(amount: number, adminId: string, passwordConfirm: string) {
+    this.logger.debug(`[START WITHDRAW] --- DEBUT DE LA PROCEDURE ---`);
+    
+    // Sécurité injection
+    if (!this.prisma) {
+        this.logger.error("❌ Erreur d'injection : PrismaService est undefined");
+        throw new HttpException("Erreur de base de données", HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    // 1. Rechercher l'admin
+    const foundAdmin = await this.prisma.user.findUnique({
+      where: { id: adminId },
+    });
+
+    if (!foundAdmin) {
+      this.logger.error(`❌ [WITHDRAW] Utilisateur ${adminId} introuvable`);
+      throw new UnauthorizedException('Session invalide : Administrateur introuvable');
+    }
+
+    // 2. Vérifier le mot de passe
+    if (!foundAdmin.password) {
+      throw new UnauthorizedException('Mot de passe absent sur ce compte');
+    }
+
+    const isPassValid = await bcrypt.compare(passwordConfirm, foundAdmin.password);
+    if (!isPassValid) {
+      this.logger.warn(`⚠️ [WITHDRAW] Mauvais MDP pour ${foundAdmin.email}`);
+      throw new UnauthorizedException('Mot de passe de confirmation incorrect');
+    }
+
+    // 3. Appel Campay
+    const externalReference = uuidv4();
+    if (!this.adminPhoneNumber || !this.token) {
+      throw new HttpException('Configuration Campay incomplète', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    try {
+      this.logger.log(`🚀 [WITHDRAW] ${amount} XAF vers ${this.adminPhoneNumber}`);
+      const response = await axios.post(
+        `${this.baseUrl}/withdraw/`,
+        {
+          amount: amount.toString(),
+          to: this.adminPhoneNumber,
+          currency: 'XAF',
+          description: `Retrait Admin - Ref: ${externalReference}`,
+          external_reference: externalReference,
+        },
+        {
+          headers: {
+            'Authorization': `Token ${this.token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+        },
+      );
+
+      return { success: true, data: response.data, externalReference };
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message;
+      this.logger.error(`❌ [WITHDRAW FAILED] ${errorMsg}`);
+      throw new HttpException(`Campay: ${errorMsg}`, error.response?.status || HttpStatus.BAD_GATEWAY);
+    }
+  }
+
+  /**
+   * 🔹 COLLECT : Mobile Money (Client) -> Balance Campay
    */
   async requestPayment(amount: number, phoneNumber: string, description: string) {
-    const externalReference = uuidv4(); // Identifiant unique pour notre backend
+    const externalReference = uuidv4();
     try {
-      this.logger.log(`🚀 [COLLECT] Initialisation: ${amount} XAF | Client: ${phoneNumber}`);
-      
+      this.logger.log(`🚀 [COLLECT] ${amount} XAF | Client: ${phoneNumber}`);
       const response = await axios.post(
         `${this.baseUrl}/collect/`,
         {
@@ -50,76 +119,18 @@ export class CampayService {
           },
         },
       );
-
-      this.logger.log(`✅ [COLLECT] Requête acceptée par Campay. Référence: ${response.data.reference}`);
-      
-      return { 
-        campayResponse: response.data, 
-        externalReference 
-      };
+      return { campayResponse: response.data, externalReference };
     } catch (error) {
-      this.logger.error(`❌ [COLLECT] Erreur: ${error.response?.data?.message || error.message}`);
-      throw new HttpException(
-        error.response?.data?.message || 'Échec de la collecte Campay', 
-        HttpStatus.BAD_GATEWAY
-      );
+      this.logger.error(`❌ [COLLECT] ${error.response?.data?.message || error.message}`);
+      throw new HttpException(error.response?.data?.message || 'Échec collecte', HttpStatus.BAD_GATEWAY);
     }
   }
 
   /**
-   * 🔹 WITHDRAW : Ta balance Campay -> Ton numéro Admin (Payout)
-   * Utilisé pour transférer l'argent récolté vers ton propre compte.
-   */
-  async withdraw(amount: number, description: string = "Transfert vers Admin") {
-    const externalReference = uuidv4();
-    
-    if (!this.adminPhoneNumber) {
-      throw new HttpException('Numéro Admin non configuré (ADMIN_PHONE_NUMBER)', HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-
-    try {
-      this.logger.log(`🏧 [WITHDRAW] Retrait: ${amount} XAF vers Admin: ${this.adminPhoneNumber}`);
-
-      const response = await axios.post(
-        `${this.baseUrl}/withdraw/`,
-        {
-          amount: amount.toString(),
-          to: this.adminPhoneNumber,
-          currency: 'XAF',
-          description: description,
-          external_reference: externalReference,
-        },
-        {
-          headers: {
-            'Authorization': `Token ${this.token}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-        },
-      );
-
-      this.logger.log(`✅ [WITHDRAW] Succès : ${response.data.reference}`);
-      return {
-        success: true,
-        data: response.data,
-        externalReference
-      };
-    } catch (error) {
-      this.logger.error(`❌ [WITHDRAW] Erreur: ${error.response?.data?.message || error.message}`);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Erreur lors du retrait',
-        error: error.message
-      };
-    }
-  }
-
-  /**
-   * 🔹 CHECK STATUS : Vérifier manuellement l'état d'une transaction
+   * 🔹 CHECK STATUS : Vérification manuelle
    */
   async getTransactionStatus(reference: string) {
     try {
-      this.logger.log(`🔍 [STATUS] Vérification de la référence: ${reference}`);
       const response = await axios.get(`${this.baseUrl}/transaction/${reference}/`, {
         headers: { 
           'Authorization': `Token ${this.token}`,
@@ -128,26 +139,21 @@ export class CampayService {
       });
       return response.data;
     } catch (error) {
-      this.logger.error(`❌ [STATUS] Erreur de vérification: ${error.message}`);
+      this.logger.error(`❌ [STATUS] Erreur: ${error.message}`);
       return null;
     }
   }
 
   /**
-   * 🔹 VALIDATE WEBHOOK : Vérifie la signature JWT envoyée par Campay
+   * 🔹 VALIDATE WEBHOOK : Signature JWT
    */
   validateWebhookSignature(signature: string): boolean {
     try {
-      if (!this.webhookKey) {
-        this.logger.warn('⚠️ CAMPAY_WEBHOOK_KEY manquante. Sécurité compromise !');
-        return true; // En développement seulement
-      }
-      
+      if (!this.webhookKey) return true; // Dev only
       jwt.verify(signature, this.webhookKey);
-      this.logger.log('🔐 [WEBHOOK] Signature JWT vérifiée avec succès');
       return true;
     } catch (error) {
-      this.logger.error(`🔐 [WEBHOOK] Signature Invalide : ${error.message}`);
+      this.logger.error(`🔐 [WEBHOOK] Signature Invalide`);
       return false;
     }
   }
